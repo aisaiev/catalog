@@ -1,49 +1,112 @@
 
 import os
 import yaml
+import requests
+import argparse
+import html
+import json
 
-def download_file(path, type, output_dir):
-    if type == "git":
-        os.system(f"git clone {path} --depth 1 {output_dir}")
-    else:
+args = argparse.ArgumentParser(description="Builds the keira app and mod files")
+args.add_argument("--build", help="Build json files for mods and apps", default=False)
+args.add_argument("--shortjson", help="Build short json files for mods and apps", default=False)
+args = args.parse_args()
+
+def download_file(path, output_dir):
+    url = path['origin'] if isinstance(path, dict) else path
+    response = requests.head(url)
+
+    output_dir = os.path.join(output_dir, str(path).split('/')[-1])
+
+    if response.status_code == 404:
+        raise FileNotFoundError(f"File not found: {path}")
+    if(args.build):
+        print(f"Downloading {path} to {output_dir}")
         os.system(f"wget {path} -O {output_dir}")
 
-def process_manifest(manifest, type):
-    os.makedirs("./build", exist_ok=True)
-    output_dir = os.path.join("./build", type+"s", manifest['name'])
-    os.makedirs(output_dir, exist_ok=True)
+def gen_static_folder(manifest, type, output_dir):
+    static_files_path = output_dir+"/static"
 
-    with open(os.path.join(output_dir, 'index.json'), 'w') as file:
-        file.write('{\n')
-        file.write(f'  "name": "{manifest["name"]}",\n')
-        file.write(f'  "description": "{manifest["description"]}",\n')
-        file.write(f'  "short_description": "{manifest["short_description"]}",\n')
-        file.write(f'  "changelog": "{manifest["changelog"]}",\n')
-        file.write(f'  "author": "{manifest["author"]}",\n')
-        file.write(f'  "icon": "{manifest["icon"]}",\n')
-        file.write(f'  "sources": "{manifest["sources"]}",\n')
-        if type == "app":
-            file.write(f'  "executionfile": "{manifest["executionfile"]}"\n')
-        elif type == "mod":
-            file.write(f'  "modfiles": "{manifest["modfiles"]}"\n')
-        else: 
-            pass
-        file.write('}\n')
-
-    download_file(manifest['sources']['location']['origin'], manifest['sources']['type'], output_dir)
+    os.makedirs(static_files_path, exist_ok=True)
 
     if type == "app":
-        download_file(manifest['executionfile']['location'], manifest['executionfile']['type'], output_dir)
+        download_file(manifest['executionfile']['location'], static_files_path)
     elif type == "mod":
         for file in manifest['modfiles']:
-            print(file)
-            download_file(file['location'], file['type'], output_dir)
+            download_file(file['location'], static_files_path)
     else:
         pass
 
+    path_to_modapp = type+"s/"+manifest['path']
+
+    for screenshot in manifest['screenshots']:
+        if screenshot.startswith('https://') or screenshot.startswith('http://'):
+            download_file(screenshot, static_files_path)
+        else:
+            os.system(f"cp {os.path.join(path_to_modapp, screenshot)} {static_files_path}")
+    if manifest['icon'].startswith('https://') or manifest['icon'].startswith('http://'):
+        download_file(manifest['icon'], static_files_path)
+    else:
+        os.system(f"cp {os.path.join(path_to_modapp, manifest['icon'])} {static_files_path}")
+
+def process_manifest(manifest, type):
+    output_dir = os.path.join("./build", type+"s", manifest['path'])
+
+    if args.build:
+        os.makedirs("./build", exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
+        def escape_for_json(value):
+            return json.dumps(value).strip('"')
+        
+        gen_static_folder(manifest, type, output_dir)
+
+        if type == "app":
+            with open(os.path.join(output_dir, 'index_short.json'), 'w') as file:
+                file.write('{\n')
+                file.write(f'  "name": "{escape_for_json(manifest["name"])}",\n')
+                file.write(f'  "short_description": "{escape_for_json(manifest["short_description"])}",\n')
+                file.write(f'  "executionfile": "{escape_for_json(str(manifest["executionfile"]))}"\n')
+                file.write('}\n')
+            
+        with open(os.path.join(output_dir, 'index.json'), 'w') as file:
+            file.write('{\n')
+            file.write(f'  "name": "{escape_for_json(manifest["name"])}",\n')
+            file.write(f'  "description": "{escape_for_json(manifest["description"])}",\n')
+            file.write(f'  "short_description": "{escape_for_json(manifest["short_description"])}",\n')
+            file.write(f'  "changelog": "{escape_for_json(manifest["changelog"])}",\n')
+            file.write(f'  "author": "{escape_for_json(manifest["author"])}",\n')
+            file.write(f'  "icon": "{escape_for_json(manifest["icon"])}",\n')
+            file.write(f'  "sources": "{escape_for_json(str(manifest["sources"]))}",\n')
+            if type == "app":
+                file.write(f'  "executionfile": "{escape_for_json(str(manifest["executionfile"]))}"\n')
+            elif type == "mod":
+                file.write(f'  "modfiles": "{escape_for_json(str(manifest["modfiles"]))}"\n')
+            else: 
+                pass
+            file.write('}\n')
 
 
-
+def gen_json_index_manifests(manifests, type):
+    jsons_per_page = 10
+    page = 1
+    jsons = []
+    pages = len(manifests) // jsons_per_page
+    if len(manifests) % jsons_per_page != 0:
+        pages += 1
+    output_dir = os.path.join("./build", type+"s")
+    os.makedirs(output_dir, exist_ok=True)
+    for i in range(0, pages):
+        with open(os.path.join("./build", type+"s", f"index_{i}.json"), 'w') as file:
+            file.write('{\n')
+            file.write(f'  "page": {i},\n')
+            file.write(f'  "total_pages": {pages},\n')
+            file.write(f'  "manifests": [\n')
+            for j in range(0, jsons_per_page):
+                if i*jsons_per_page+j >= len(manifests):
+                    break
+                file.write(f'    "{manifests[i*jsons_per_page+j]}",\n')
+            file.write('  ]\n')
+            file.write('}\n')
+        
 
 def check_folder_sturcture(folder):
     return os.path.isfile(os.path.join(folder, 'manifest.yml'))
@@ -130,6 +193,8 @@ def check_manifest(src, type):
         else:
             raise ValueError(f"Type not found in manifest file: {manifest_path}")
         
+        manifest['path'] = src.split('/')[-1]
+
         return manifest
         
 
@@ -164,6 +229,11 @@ def main():
 
     process_apps_folder(apps)
     process_mods_folder(mods)
+
+
+    if args.build:
+        gen_json_index_manifests(apps, "app")
+        gen_json_index_manifests(mods, "mod")
 
 if __name__ == '__main__': 
     main()
