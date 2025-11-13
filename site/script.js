@@ -47,7 +47,11 @@ class LilkaRepository {
         document.querySelectorAll('.tab-button').forEach(button => {
             button.addEventListener('click', (e) => {
                 const type = e.target.dataset.type;
-                this.switchType(type);
+                if (type === 'docs') {
+                    this.showDocumentation();
+                } else {
+                    this.switchType(type);
+                }
             });
         });
 
@@ -106,7 +110,35 @@ class LilkaRepository {
         });
         document.querySelector(`[data-type="${type}"]`).classList.add('active');
         
+        // Show/hide appropriate content
+        document.getElementById('content').style.display = 'block';
+        document.getElementById('docs').style.display = 'none';
+        
         this.loadPage();
+    }
+
+    async showDocumentation() {
+        // Update active tab
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector('[data-type="docs"]').classList.add('active');
+        
+        // Hide items content, show docs
+        document.getElementById('content').style.display = 'none';
+        const docsContainer = document.getElementById('docs');
+        docsContainer.style.display = 'block';
+        
+        try {
+            const response = await fetch('README.md');
+            if (!response.ok) {
+                throw new Error('Failed to load documentation');
+            }
+            const markdown = await response.text();
+            docsContainer.innerHTML = marked.parse(markdown);
+        } catch (error) {
+            docsContainer.innerHTML = `<p style="color: var(--error);">Failed to load documentation: ${error.message}</p>`;
+        }
     }
 
     async loadPage() {

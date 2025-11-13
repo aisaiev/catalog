@@ -44,6 +44,7 @@ mkdir -p "$PROJECT_DIR/build"
 cp "$PROJECT_DIR/site/index.html" "$PROJECT_DIR/build/"
 cp "$PROJECT_DIR/site/styles.css" "$PROJECT_DIR/build/"
 cp "$PROJECT_DIR/site/script.js" "$PROJECT_DIR/build/"
+cp "$PROJECT_DIR/README.md" "$PROJECT_DIR/build/"
 
 echo -e "${GREEN}✓ Static site files copied to build/${NC}"
 echo ""
