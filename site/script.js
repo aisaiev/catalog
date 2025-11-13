@@ -4,12 +4,42 @@ class LilkaRepository {
         this.currentPage = 0;
         this.totalPages = 0;
         this.manifests = [];
+        this.currentScreenshots = [];
+        this.currentLightboxIndex = 0;
         this.init();
     }
 
     init() {
         this.setupEventListeners();
+        this.setupLightboxListeners();
         this.loadPage();
+    }
+
+    setupLightboxListeners() {
+        const lightbox = document.getElementById('lightbox');
+        const lightboxClose = document.getElementById('lightboxClose');
+        const lightboxPrev = document.getElementById('lightboxPrev');
+        const lightboxNext = document.getElementById('lightboxNext');
+        
+        lightboxClose.addEventListener('click', () => this.closeLightbox());
+        lightboxPrev.addEventListener('click', () => this.prevLightboxImage());
+        lightboxNext.addEventListener('click', () => this.nextLightboxImage());
+        
+        // Close on background click
+        lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox) {
+                this.closeLightbox();
+            }
+        });
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (lightbox.style.display === 'flex') {
+                if (e.key === 'Escape') this.closeLightbox();
+                if (e.key === 'ArrowLeft') this.prevLightboxImage();
+                if (e.key === 'ArrowRight') this.nextLightboxImage();
+            }
+        });
     }
 
     setupEventListeners() {
@@ -221,12 +251,34 @@ class LilkaRepository {
             </div>
         ` : '';
 
+        // Create screenshots gallery
+        let screenshotsSection = '';
+        if (manifest.screenshots && Array.isArray(manifest.screenshots) && manifest.screenshots.length > 0) {
+            screenshotsSection = `
+                <div class="modal-section">
+                    <h3>📷 Screenshots</h3>
+                    <div class="screenshots-gallery">
+                        ${manifest.screenshots.map((screenshot, index) => {
+                            const screenshotPath = `${this.currentType}/${manifestName}/static/${screenshot}`;
+                            return `<img src="${screenshotPath}" alt="Screenshot" class="screenshot-thumb" data-index="${index}" onerror="this.style.display='none'">`;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Store screenshots for lightbox
+        this.currentScreenshots = manifest.screenshots ? manifest.screenshots.map(s => 
+            `${this.currentType}/${manifestName}/static/${s}`
+        ) : [];
+
         modalBody.innerHTML = `
             <div class="modal-header">
                 <h2>${this.escapeHtml(manifest.name)}</h2>
                 <div class="author">${this.escapeHtml(manifest.author)}</div>
             </div>
             ${manifest.icon ? `<img src="${iconPath}" alt="${manifest.name}" class="modal-icon" onerror="this.style.display='none'">` : ''}
+            ${screenshotsSection}
             <div class="modal-section">
                 <h3>📝 Description</h3>
                 <pre>${this.escapeHtml(manifest.description)}</pre>
@@ -241,6 +293,57 @@ class LilkaRepository {
 
         modal.style.display = 'block';
         console.log('Modal opened successfully');
+        
+        // Add click handlers for screenshots after modal is populated
+        setTimeout(() => {
+            document.querySelectorAll('.screenshot-thumb').forEach(thumb => {
+                thumb.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    this.openLightbox(index);
+                });
+            });
+        }, 100);
+    }
+
+    openLightbox(index) {
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightboxImg');
+        
+        this.currentLightboxIndex = index;
+        lightboxImg.src = this.currentScreenshots[index];
+        lightbox.style.display = 'flex';
+        
+        this.updateLightboxButtons();
+    }
+
+    closeLightbox() {
+        document.getElementById('lightbox').style.display = 'none';
+    }
+
+    nextLightboxImage() {
+        if (this.currentLightboxIndex < this.currentScreenshots.length - 1) {
+            this.currentLightboxIndex++;
+            document.getElementById('lightboxImg').src = this.currentScreenshots[this.currentLightboxIndex];
+            this.updateLightboxButtons();
+        }
+    }
+
+    prevLightboxImage() {
+        if (this.currentLightboxIndex > 0) {
+            this.currentLightboxIndex--;
+            document.getElementById('lightboxImg').src = this.currentScreenshots[this.currentLightboxIndex];
+            this.updateLightboxButtons();
+        }
+    }
+
+    updateLightboxButtons() {
+        const prevBtn = document.getElementById('lightboxPrev');
+        const nextBtn = document.getElementById('lightboxNext');
+        const counter = document.getElementById('lightboxCounter');
+        
+        prevBtn.style.display = this.currentLightboxIndex > 0 ? 'block' : 'none';
+        nextBtn.style.display = this.currentLightboxIndex < this.currentScreenshots.length - 1 ? 'block' : 'none';
+        counter.textContent = `${this.currentLightboxIndex + 1} / ${this.currentScreenshots.length}`;
     }
 
     parseJsonString(str) {

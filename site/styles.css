@@ -373,6 +373,121 @@ main {
     font-family: 'Courier New', monospace;
 }
 
+/* Screenshots Gallery */
+.screenshots-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.screenshot-thumb {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: calc(var(--radius) / 2);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid var(--border);
+}
+
+.screenshot-thumb:hover {
+    transform: scale(1.05);
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Lightbox */
+.lightbox {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.95);
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.lightbox-image {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
+    animation: zoomIn 0.3s ease;
+}
+
+@keyframes zoomIn {
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.lightbox-close {
+    position: absolute;
+    top: 20px;
+    right: 40px;
+    color: white;
+    font-size: 3rem;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 2001;
+    transition: color 0.3s ease;
+}
+
+.lightbox-close:hover {
+    color: var(--primary-color);
+}
+
+.lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: none;
+    font-size: 3rem;
+    padding: 1rem 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 2001;
+    border-radius: var(--radius);
+}
+
+.lightbox-nav:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: var(--primary-color);
+}
+
+.lightbox-prev {
+    left: 20px;
+}
+
+.lightbox-next {
+    right: 20px;
+}
+
+.lightbox-counter {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-size: 1.2rem;
+    font-weight: 600;
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius);
+    z-index: 2001;
+}
+
 /* Download Buttons */
 .download-btn {
     display: inline-block;

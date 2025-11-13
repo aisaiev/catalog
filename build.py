@@ -5,11 +5,65 @@ import requests
 import argparse
 import html
 import json
+from PIL import Image
 
 args = argparse.ArgumentParser(description="Builds the keira app and mod files")
 args.add_argument("--build", help="Build json files for mods and apps", action='store_true', default=False)
 args.add_argument("--shortjson", help="Build short json files for mods and apps", action='store_true', default=False)
 args = args.parse_args()
+
+# Maximum dimensions for images (width, height)
+MAX_IMAGE_WIDTH = 1920
+MAX_IMAGE_HEIGHT = 1080
+MAX_ICON_SIZE = 512
+JPEG_QUALITY = 85
+
+def compress_image(image_path, max_width=MAX_IMAGE_WIDTH, max_height=MAX_IMAGE_HEIGHT, quality=JPEG_QUALITY):
+    """Compress and resize image if it's too large"""
+    try:
+        with Image.open(image_path) as img:
+            # Get original size
+            original_size = os.path.getsize(image_path)
+            width, height = img.size
+            
+            # Check if image needs resizing
+            if width > max_width or height > max_height:
+                print(f"  Resizing image from {width}x{height} to fit {max_width}x{max_height}")
+                # Calculate new dimensions maintaining aspect ratio
+                img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+                
+                # Save compressed image
+                if image_path.lower().endswith('.png'):
+                    img.save(image_path, 'PNG', optimize=True)
+                else:
+                    # Convert to RGB if needed (for JPEG)
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                        img = background
+                    img.save(image_path, 'JPEG', quality=quality, optimize=True)
+                
+                new_size = os.path.getsize(image_path)
+                print(f"  Compressed: {original_size} bytes -> {new_size} bytes ({100 - int(new_size/original_size*100)}% reduction)")
+            elif original_size > 500 * 1024:  # If larger than 500KB, optimize anyway
+                print(f"  Optimizing large image ({original_size} bytes)")
+                if image_path.lower().endswith('.png'):
+                    img.save(image_path, 'PNG', optimize=True)
+                else:
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                        img = background
+                    img.save(image_path, 'JPEG', quality=quality, optimize=True)
+                
+                new_size = os.path.getsize(image_path)
+                print(f"  Compressed: {original_size} bytes -> {new_size} bytes ({100 - int(new_size/original_size*100)}% reduction)")
+    except Exception as e:
+        print(f"  Warning: Could not compress image {image_path}: {e}")
 
 def download_file(path, output_dir) -> str:
     url = path['origin'] if isinstance(path, dict) else path
@@ -41,15 +95,28 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
 
     path_to_modapp = type+"s/"+manifest['path']
 
+    # Copy and compress screenshots
     for screenshot in manifest['screenshots']:
         if screenshot.startswith('https://') or screenshot.startswith('http://'):
             download_file(screenshot, static_files_path)
         else:
-            os.system(f"cp {os.path.join(path_to_modapp, screenshot)} {static_files_path}")
+            source_path = os.path.join(path_to_modapp, screenshot)
+            dest_path = os.path.join(static_files_path, screenshot)
+            os.system(f"cp '{source_path}' '{dest_path}'")
+            # Compress the screenshot
+            if os.path.exists(dest_path):
+                compress_image(dest_path, MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT)
+    
+    # Copy and compress icon
     if manifest['icon'].startswith('https://') or manifest['icon'].startswith('http://'):
         download_file(manifest['icon'], static_files_path)
     else:
-        os.system(f"cp {os.path.join(path_to_modapp, manifest['icon'])} {static_files_path}")
+        source_path = os.path.join(path_to_modapp, manifest['icon'])
+        dest_path = os.path.join(static_files_path, manifest['icon'])
+        os.system(f"cp '{source_path}' '{dest_path}'")
+        # Compress the icon (smaller size for icons)
+        if os.path.exists(dest_path):
+            compress_image(dest_path, MAX_ICON_SIZE, MAX_ICON_SIZE)
 
     return manifest
 
@@ -81,6 +148,7 @@ def process_manifest(manifest, type) -> None:
             file.write(f'  "author": "{escape_for_json(manifest["author"])}",\n')
             file.write(f'  "icon": "{escape_for_json(manifest["icon"])}",\n')
             file.write(f'  "sources": "{escape_for_json(str(manifest["sources"]))}",\n')
+            file.write(f'  "screenshots": {json.dumps(manifest.get("screenshots", []))},\n')
             if type == "app":
                 file.write(f'  "executionfile": "{escape_for_json(str(manifest["executionfile"]))}"\n')
             elif type == "mod":
