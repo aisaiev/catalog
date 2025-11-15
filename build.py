@@ -100,7 +100,7 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
 
     os.makedirs(static_files_path, exist_ok=True)
 
-    if type == "app":
+    if type == "app" and manifest.get('executionfile'):
         manifest['executionfile']['location'] = download_file(manifest['executionfile']['location'], static_files_path)
     elif type == "mod":
         for file in manifest['modfiles']:
@@ -129,21 +129,22 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
             print(f"WARNING: Failed to process screenshot {screenshot}: {str(e)}")
     
     # Copy and compress icon
-    try:
-        if manifest['icon'].startswith('https://') or manifest['icon'].startswith('http://'):
-            download_file(manifest['icon'], static_files_path)
-        else:
-            source_path = os.path.join(path_to_modapp, manifest['icon'])
-            dest_path = os.path.join(static_files_path, manifest['icon'])
-            if os.path.exists(source_path):
-                os.system(f"cp '{source_path}' '{dest_path}'")
-                # Compress the icon (smaller size for icons)
-                if os.path.exists(dest_path):
-                    compress_image(dest_path, MAX_ICON_SIZE, MAX_ICON_SIZE)
+    if manifest.get('icon'):
+        try:
+            if manifest['icon'].startswith('https://') or manifest['icon'].startswith('http://'):
+                download_file(manifest['icon'], static_files_path)
             else:
-                print(f"WARNING: Icon not found, skipping: {manifest['icon']}")
-    except Exception as e:
-        print(f"WARNING: Failed to process icon: {str(e)}")
+                source_path = os.path.join(path_to_modapp, manifest['icon'])
+                dest_path = os.path.join(static_files_path, manifest['icon'])
+                if os.path.exists(source_path):
+                    os.system(f"cp '{source_path}' '{dest_path}'")
+                    # Compress the icon (smaller size for icons)
+                    if os.path.exists(dest_path):
+                        compress_image(dest_path, MAX_ICON_SIZE, MAX_ICON_SIZE)
+                else:
+                    print(f"WARNING: Icon not found, skipping: {manifest['icon']}")
+        except Exception as e:
+            print(f"WARNING: Failed to process icon: {str(e)}")
 
     return manifest
 
@@ -153,36 +154,47 @@ def process_manifest(manifest, type) -> None:
     if args.build:
         os.makedirs("./build", exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
-        def escape_for_json(value):
-            return json.dumps(value).strip('"')
         
         manifest = gen_static_folder(manifest, type, output_dir)
 
         if type == "app":
-            with open(os.path.join(output_dir, 'index_short.json'), 'w') as file:
-                file.write('{\n')
-                file.write(f'  "name": "{escape_for_json(manifest["name"])}",\n')
-                file.write(f'  "short_description": "{escape_for_json(manifest["short_description"])}",\n')
-                file.write(f'  "executionfile": "{escape_for_json(str(manifest["executionfile"]))}"\n')
-                file.write('}\n')
+            short_data = {
+                "name": manifest["name"],
+                "short_description": manifest["short_description"]
+            }
+            # Only include executionfile if it exists
+            if manifest.get("executionfile"):
+                short_data["executionfile"] = manifest["executionfile"]
             
-        with open(os.path.join(output_dir, 'index.json'), 'w') as file:
-            file.write('{\n')
-            file.write(f'  "name": "{escape_for_json(manifest["name"])}",\n')
-            file.write(f'  "description": "{escape_for_json(manifest["description"])}",\n')
-            file.write(f'  "short_description": "{escape_for_json(manifest["short_description"])}",\n')
-            file.write(f'  "changelog": "{escape_for_json(manifest["changelog"])}",\n')
-            file.write(f'  "author": "{escape_for_json(manifest["author"])}",\n')
-            file.write(f'  "icon": "{escape_for_json(manifest["icon"])}",\n')
-            file.write(f'  "sources": "{escape_for_json(str(manifest["sources"]))}",\n')
-            file.write(f'  "screenshots": {json.dumps(manifest.get("screenshots", []))},\n')
-            if type == "app":
-                file.write(f'  "executionfile": "{escape_for_json(str(manifest["executionfile"]))}"\n')
-            elif type == "mod":
-                file.write(f'  "modfiles": "{escape_for_json(str(manifest["modfiles"]))}"\n')
-            else: 
-                pass
-            file.write('}\n')
+            with open(os.path.join(output_dir, 'index_short.json'), 'w', encoding='utf-8') as file:
+                json.dump(short_data, file, indent=2, ensure_ascii=False)
+            
+        full_data = {
+            "name": manifest["name"],
+            "description": manifest["description"],
+            "short_description": manifest["short_description"],
+            "author": manifest["author"],
+            "sources": manifest["sources"],
+            "screenshots": manifest.get("screenshots", [])
+        }
+        
+        # Only include icon if it exists
+        if manifest.get("icon"):
+            full_data["icon"] = manifest["icon"]
+        
+        # Only include changelog if it exists and is not empty
+        if manifest.get("changelog"):
+            full_data["changelog"] = manifest["changelog"]
+        
+        if type == "app":
+            # Only include executionfile if it exists
+            if manifest.get("executionfile"):
+                full_data["executionfile"] = manifest["executionfile"]
+        elif type == "mod":
+            full_data["modfiles"] = manifest["modfiles"]
+        
+        with open(os.path.join(output_dir, 'index.json'), 'w', encoding='utf-8') as file:
+            json.dump(full_data, file, indent=2, ensure_ascii=False)
 
 
 def gen_json_index_manifests(manifests, type) -> None:
@@ -256,7 +268,7 @@ def validate_app_files(src, manifest, type) -> bool:
                     response = requests.head(exec_url, timeout=5)
                     if response.status_code == 404:
                         add_warning(src, "exec_file_not_found", f"Execution file not found: {exec_url}", type)
-                        is_valid = False
+                        # Don't mark as invalid - just warn
                 except Exception as e:
                     add_warning(src, "exec_file_check_failed", f"Could not verify execution file: {str(e)}", type)
     
@@ -337,8 +349,8 @@ def check_manifest(src, type) -> dict:
     if 'icon' in manifest:
         print(f"Icon: {manifest['icon']}")
     else:
-        add_warning(src, "missing_field", "Icon not found in manifest file", type)
-        return None
+        add_warning(src, "missing_field", "Icon not found in manifest file (optional)", type)
+        # Don't return None - icon is now optional
     
     if 'sources' in manifest:
         print(f"sources: {manifest['sources']}")
@@ -365,8 +377,8 @@ def check_manifest(src, type) -> dict:
         if 'executionfile' in manifest:
             print(f"executionfile: {manifest['executionfile']}")
         else:
-            add_warning(src, "missing_field", "executionfile not found in manifest file", type)
-            return None
+            add_warning(src, "missing_field", "executionfile not found in manifest file (optional)", type)
+            # Don't return None - executionfile is now optional
     elif type == "mod":
         if 'modfiles' in manifest:
             print(f"Modfile: {manifest['modfiles']}")

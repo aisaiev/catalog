@@ -98,6 +98,13 @@ class LilkaRepository {
                 modal.style.display = 'none';
             }
         });
+
+        // Close modal with ESC key
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'block') {
+                modal.style.display = 'none';
+            }
+        });
     }
 
     switchType(type) {
@@ -318,14 +325,18 @@ class LilkaRepository {
             </div>
             ${manifest.icon ? `<img src="${iconPath}" alt="${manifest.name}" class="modal-icon" onerror="this.style.display='none'">` : ''}
             ${screenshotsSection}
+            ${manifest.description && manifest.description.trim() ? `
             <div class="modal-section">
                 <h3>📝 Description</h3>
                 <div class="markdown-content">${marked.parse(manifest.description)}</div>
             </div>
+            ` : ''}
+            ${manifest.changelog && manifest.changelog.trim() ? `
             <div class="modal-section">
                 <h3>📋 Changelog</h3>
                 <div class="markdown-content">${marked.parse(manifest.changelog)}</div>
             </div>
+            ` : ''}
             ${filesSection}
             ${sourcesSection}
         `;
