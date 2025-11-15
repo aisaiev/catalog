@@ -342,6 +342,13 @@ class LilkaRepository {
         `;
 
         modal.style.display = 'block';
+        
+        // Scroll modal content to top
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.scrollTop = 0;
+        }
+        
         console.log('Modal opened successfully');
         
         // Add click handlers for screenshots after modal is populated
