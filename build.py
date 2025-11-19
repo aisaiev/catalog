@@ -31,7 +31,32 @@ def add_warning(name, warning_type, message, item_type=None):
 MAX_IMAGE_WIDTH = 1920
 MAX_IMAGE_HEIGHT = 1080
 MAX_ICON_SIZE = 512
+MIN_ICON_SIZE = 64  # For ESP32-S3 display
 JPEG_QUALITY = 85
+
+def generate_min_icon(icon_path, output_path):
+    """Generate 64x64 minimized icon for ESP32-S3"""
+    try:
+        with Image.open(icon_path) as img:
+            # Convert to RGB if needed
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                if img.mode in ('RGBA', 'LA'):
+                    background.paste(img, mask=img.split()[-1])
+                else:
+                    background.paste(img)
+                img = background
+            
+            # Resize to 64x64
+            img_resized = img.resize((MIN_ICON_SIZE, MIN_ICON_SIZE), Image.Resampling.LANCZOS)
+            
+            # Save as optimized PNG
+            img_resized.save(output_path, 'PNG', optimize=True)
+            print(f"  Generated min icon: {output_path} (64x64)")
+    except Exception as e:
+        print(f"  Warning: Could not generate min icon: {e}")
 
 def compress_image(image_path, max_width=MAX_IMAGE_WIDTH, max_height=MAX_IMAGE_HEIGHT, quality=JPEG_QUALITY):
     """Compress and resize image if it's too large"""
@@ -133,16 +158,28 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
         try:
             if manifest['icon'].startswith('https://') or manifest['icon'].startswith('http://'):
                 download_file(manifest['icon'], static_files_path)
+                icon_dest_path = os.path.join(static_files_path, manifest['icon'].split('/')[-1])
             else:
                 source_path = os.path.join(path_to_modapp, manifest['icon'])
                 dest_path = os.path.join(static_files_path, manifest['icon'])
                 if os.path.exists(source_path):
                     os.system(f"cp '{source_path}' '{dest_path}'")
+                    icon_dest_path = dest_path
                     # Compress the icon (smaller size for icons)
                     if os.path.exists(dest_path):
                         compress_image(dest_path, MAX_ICON_SIZE, MAX_ICON_SIZE)
                 else:
                     print(f"WARNING: Icon not found, skipping: {manifest['icon']}")
+                    icon_dest_path = None
+            
+            # Generate minimized 64x64 icon for ESP32-S3
+            if icon_dest_path and os.path.exists(icon_dest_path):
+                icon_name = os.path.splitext(manifest['icon'])[0]
+                icon_ext = os.path.splitext(manifest['icon'])[1]
+                min_icon_name = f"{icon_name}_min.png"
+                min_icon_path = os.path.join(static_files_path, min_icon_name)
+                generate_min_icon(icon_dest_path, min_icon_path)
+                manifest['icon_min'] = min_icon_name
         except Exception as e:
             print(f"WARNING: Failed to process icon: {str(e)}")
 
@@ -181,6 +218,10 @@ def process_manifest(manifest, type) -> None:
         # Only include icon if it exists
         if manifest.get("icon"):
             full_data["icon"] = manifest["icon"]
+        
+        # Include minimized icon for ESP32-S3 if it exists
+        if manifest.get("icon_min"):
+            full_data["icon_min"] = manifest["icon_min"]
         
         # Only include changelog if it exists and is not empty
         if manifest.get("changelog"):
