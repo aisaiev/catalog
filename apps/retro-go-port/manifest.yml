@@ -1,0 +1,20 @@
+name: Retro-Go Port (C/C++)
+sources:
+  type: git
+  location:
+    origin: https://github.com/ab4o1on/retro-go/tree/lilka-dev
+executionfile:
+  type: binary
+  location:
+    origin: https://github.com/ab4o1on/retro-go/releases/download/1.4x-dev-lilka/retro-go_1.46_lilka.img
+short_description: Порт Retro-Go, прошивки для запуску ретро-ігор на ESP32.
+description: "@DESCRIPTION.md"
+author: "@ab4o1on"
+license: GPLv2
+keira_version: 1.0.0
+icon: image1.png
+screenshots:
+  - image2.png
+  - image3.png
+  - image4.png
+  - image5.png
