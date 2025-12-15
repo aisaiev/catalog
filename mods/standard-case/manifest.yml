@@ -1,0 +1,13 @@
+name: "Case for Lilka dev board"
+short_description: "Корпус для плати Лілка який легко друкувати"
+description: "@DESCRIPTION.md"
+author: "@Shashel_1353421"
+icon: "image1.png"
+sources:
+  type: printables
+  location:
+    origin: https://www.printables.com/model/1189054-case-for-lilka-dev-board
+screenshots:
+  - image1.png
+  - image2.png
+  - image3.png

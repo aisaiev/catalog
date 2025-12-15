@@ -1,0 +1,11 @@
+name: "Lilka case update"
+short_description: "Updated Case Back to Fit Larger Battery and Taller Buttons"
+description: "@DESCRIPTION.md"
+author: "@JohnDoe_3156660"
+icon: "image.png"
+sources:
+  type: printables
+  location:
+    origin: https://www.printables.com/model/1265791-lilka-case-update
+screenshots:
+  - image.png

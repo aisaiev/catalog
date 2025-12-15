@@ -1,0 +1,11 @@
+name: "Hat caps for lilka"
+short_description: "Hat Caps ABCD for lilka 12x12 keys"
+description: "@DESCRIPTION.md"
+author: "@black-ghost-off"
+icon: "image.png"
+sources:
+  type: printables
+  location:
+    origin: https://www.printables.com/model/1500182-hat-caps-for-lilka
+screenshots:
+  - image.png

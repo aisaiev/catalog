@@ -1,0 +1,12 @@
+name: "LilCase"
+short_description: "Корпус для лілки з кількома версіями"
+description: "@DESCRIPTION.md"
+author: "@KostyantynPol_996395"
+icon: "image1.png"
+sources:
+  type: printables
+  location:
+    origin: https://www.printables.com/model/1120079-lilcase
+screenshots:
+  - image1.png
+  - image2.png

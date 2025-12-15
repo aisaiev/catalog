@@ -31,7 +31,52 @@ def add_warning(name, warning_type, message, item_type=None):
 MAX_IMAGE_WIDTH = 1920
 MAX_IMAGE_HEIGHT = 1080
 MAX_ICON_SIZE = 512
+MIN_ICON_SIZE = 64  # For ESP32-S3 display
 JPEG_QUALITY = 85
+
+def generate_min_icon(icon_path, output_path):
+    """Generate 64x64 minimized icon for ESP32-S3 in RGB565 binary format"""
+    try:
+        with Image.open(icon_path) as img:
+            # Convert to RGB if needed
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                if img.mode in ('RGBA', 'LA'):
+                    background.paste(img, mask=img.split()[-1])
+                else:
+                    background.paste(img)
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Resize to 64x64
+            img_resized = img.resize((MIN_ICON_SIZE, MIN_ICON_SIZE), Image.Resampling.LANCZOS)
+            
+            # Convert to RGB565 binary format
+            pixels = img_resized.load()
+            rgb565_data = bytearray()
+            
+            for y in range(MIN_ICON_SIZE):
+                for x in range(MIN_ICON_SIZE):
+                    r, g, b = pixels[x, y]
+                    # Convert RGB888 to RGB565
+                    r5 = (r >> 3) & 0x1F
+                    g6 = (g >> 2) & 0x3F
+                    b5 = (b >> 3) & 0x1F
+                    rgb565 = (r5 << 11) | (g6 << 5) | b5
+                    # Write as little-endian 16-bit value
+                    rgb565_data.append(rgb565 & 0xFF)
+                    rgb565_data.append((rgb565 >> 8) & 0xFF)
+            
+            # Save binary file
+            with open(output_path, 'wb') as f:
+                f.write(rgb565_data)
+            
+            print(f"  Generated min icon: {output_path} (64x64 RGB565, {len(rgb565_data)} bytes)")
+    except Exception as e:
+        print(f"  Warning: Could not generate min icon: {e}")
 
 def compress_image(image_path, max_width=MAX_IMAGE_WIDTH, max_height=MAX_IMAGE_HEIGHT, quality=JPEG_QUALITY):
     """Compress and resize image if it's too large"""
@@ -102,7 +147,7 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
 
     if type == "app" and manifest.get('executionfile'):
         manifest['executionfile']['location'] = download_file(manifest['executionfile']['location'], static_files_path)
-    elif type == "mod":
+    elif type == "mod" and manifest.get('modfiles'):
         for file in manifest['modfiles']:
             file['location'] = download_file(file['location'], static_files_path)
     else:
@@ -133,16 +178,27 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
         try:
             if manifest['icon'].startswith('https://') or manifest['icon'].startswith('http://'):
                 download_file(manifest['icon'], static_files_path)
+                icon_dest_path = os.path.join(static_files_path, manifest['icon'].split('/')[-1])
             else:
                 source_path = os.path.join(path_to_modapp, manifest['icon'])
                 dest_path = os.path.join(static_files_path, manifest['icon'])
                 if os.path.exists(source_path):
                     os.system(f"cp '{source_path}' '{dest_path}'")
+                    icon_dest_path = dest_path
                     # Compress the icon (smaller size for icons)
                     if os.path.exists(dest_path):
                         compress_image(dest_path, MAX_ICON_SIZE, MAX_ICON_SIZE)
                 else:
                     print(f"WARNING: Icon not found, skipping: {manifest['icon']}")
+                    icon_dest_path = None
+            
+            # Generate minimized 64x64 icon for ESP32-S3 in RGB565 format
+            if icon_dest_path and os.path.exists(icon_dest_path):
+                icon_name = os.path.splitext(manifest['icon'])[0]
+                min_icon_name = f"{icon_name}_min.bin"
+                min_icon_path = os.path.join(static_files_path, min_icon_name)
+                generate_min_icon(icon_dest_path, min_icon_path)
+                manifest['icon_min'] = min_icon_name
         except Exception as e:
             print(f"WARNING: Failed to process icon: {str(e)}")
 
@@ -182,6 +238,10 @@ def process_manifest(manifest, type) -> None:
         if manifest.get("icon"):
             full_data["icon"] = manifest["icon"]
         
+        # Include minimized icon for ESP32-S3 if it exists
+        if manifest.get("icon_min"):
+            full_data["icon_min"] = manifest["icon_min"]
+        
         # Only include changelog if it exists and is not empty
         if manifest.get("changelog"):
             full_data["changelog"] = manifest["changelog"]
@@ -191,7 +251,9 @@ def process_manifest(manifest, type) -> None:
             if manifest.get("executionfile"):
                 full_data["executionfile"] = manifest["executionfile"]
         elif type == "mod":
-            full_data["modfiles"] = manifest["modfiles"]
+            # Only include modfiles if they exist
+            if manifest.get("modfiles"):
+                full_data["modfiles"] = manifest["modfiles"]
         
         with open(os.path.join(output_dir, 'index.json'), 'w', encoding='utf-8') as file:
             json.dump(full_data, file, indent=2, ensure_ascii=False)
@@ -383,8 +445,8 @@ def check_manifest(src, type) -> dict:
         if 'modfiles' in manifest:
             print(f"Modfile: {manifest['modfiles']}")
         else:
-            add_warning(src, "missing_field", "modfiles not found in manifest file", type)
-            return None
+            add_warning(src, "missing_field", "modfiles not found in manifest file (optional)", type)
+            manifest['modfiles'] = []
     else:
         add_warning(src, "unknown_type", f"Unknown type: {type}", type)
         return None

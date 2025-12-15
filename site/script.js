@@ -12,7 +12,84 @@ class LilkaRepository {
     init() {
         this.setupEventListeners();
         this.setupLightboxListeners();
-        this.loadPage();
+        this.handleRouting();
+    }
+
+    async handleRouting() {
+        const params = new URLSearchParams(window.location.search);
+        const type = params.get('type');
+        const page = params.get('page');
+        const item = params.get('item');
+        
+        // Handle direct item link: ?type=apps&item=ble.app
+        if (item && type) {
+            this.currentType = type;
+            this.updateActiveTab(type);
+            // Load the page list in background first
+            await this.loadPage();
+            // Then open the modal
+            await this.openDirectItem(type, item);
+            return;
+        }
+        
+        // Handle page navigation: ?type=apps&page=1
+        if (type) {
+            this.currentType = type;
+            this.currentPage = page ? parseInt(page) : 0;
+            await this.switchType(type);
+            return;
+        }
+        
+        // Default: load apps page 0
+        await this.loadPage();
+    }
+
+    updateActiveTab(type) {
+        // Update active tab
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-type="${type}"]`).classList.add('active');
+        
+        // Show/hide appropriate content
+        document.getElementById('content').style.display = 'block';
+        document.getElementById('docs').style.display = 'none';
+    }
+
+    async openDirectItem(type, itemName) {
+        try {
+            const manifestPath = `${type}/${itemName}/index.json`;
+            const response = await fetch(manifestPath);
+            
+            if (!response.ok) {
+                throw new Error(`Item not found: ${itemName}`);
+            }
+            
+            const manifest = await response.json();
+            this.showModal(manifest, itemName);
+        } catch (error) {
+            console.error('Error opening direct item:', error);
+            this.showError(`Failed to load ${type.slice(0, -1)}: ${itemName}`);
+        }
+    }
+
+    updateURL(type = null, page = null, itemName = null) {
+        const params = new URLSearchParams();
+        
+        if (itemName) {
+            // Direct item link: ?type=apps&item=ble.app
+            params.set('type', type);
+            params.set('item', itemName);
+        } else if (type) {
+            // Page navigation: ?type=apps&page=1
+            params.set('type', type);
+            if (page !== null && page > 0) {
+                params.set('page', page);
+            }
+        }
+        
+        const url = params.toString() ? `?${params.toString()}` : '/';
+        window.history.pushState({ type, page, itemName }, '', url);
     }
 
     setupLightboxListeners() {
@@ -91,11 +168,15 @@ class LilkaRepository {
 
         closeBtn.addEventListener('click', () => {
             modal.style.display = 'none';
+            // Return to list view URL
+            this.updateURL(this.currentType, this.currentPage);
         });
 
         window.addEventListener('click', (e) => {
             if (e.target === modal) {
                 modal.style.display = 'none';
+                // Return to list view URL
+                this.updateURL(this.currentType, this.currentPage);
             }
         });
 
@@ -103,13 +184,23 @@ class LilkaRepository {
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && modal.style.display === 'block') {
                 modal.style.display = 'none';
+                // Return to list view URL
+                this.updateURL(this.currentType, this.currentPage);
             }
         });
+        
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', (e) => {
+            modal.style.display = 'none';
+            this.handleRouting();
+        });
     }
-
-    switchType(type) {
+    async switchType(type) {
         this.currentType = type;
-        this.currentPage = 0;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('type') !== type) {
+            this.currentPage = 0;
+        }
         
         // Update active tab
         document.querySelectorAll('.tab-button').forEach(btn => {
@@ -121,7 +212,7 @@ class LilkaRepository {
         document.getElementById('content').style.display = 'block';
         document.getElementById('docs').style.display = 'none';
         
-        this.loadPage();
+        await this.loadPage();
     }
 
     async showDocumentation() {
@@ -174,6 +265,9 @@ class LilkaRepository {
             
             this.loadManifests();
             this.updatePagination();
+            
+            // Update URL when page loads
+            this.updateURL(this.currentType, this.currentPage);
         } catch (error) {
             this.showError(`Error loading page: ${error.message}`);
             console.error(error);
@@ -216,6 +310,7 @@ class LilkaRepository {
         const card = document.createElement('div');
         card.className = 'item-card';
         
+        // Build icon path without duplicating type
         const iconPath = `${this.currentType}/${manifestName}/static/${manifest.icon}`;
         
         card.innerHTML = `
@@ -227,6 +322,8 @@ class LilkaRepository {
 
         card.addEventListener('click', () => {
             this.showModal(manifest, manifestName);
+            // Update URL when opening modal
+            this.updateURL(this.currentType, null, manifestName);
         });
 
         return card;
@@ -238,7 +335,9 @@ class LilkaRepository {
         const modal = document.getElementById('modal');
         const modalBody = document.getElementById('modalBody');
         
-        const iconPath = `${this.currentType}/${manifestName}/static/${manifest.icon}`;
+        // Build paths - manifestName already includes the full path relative to type
+        const basePath = `${this.currentType}/${manifestName}`;
+        const iconPath = `${basePath}/static/${manifest.icon}`;
         
         // Parse execution file or mod files
         let filesSection = '';
@@ -246,7 +345,7 @@ class LilkaRepository {
             if (this.currentType === 'apps' && manifest.executionfile) {
                 const execFile = this.parseJsonString(manifest.executionfile);
                 if (execFile && execFile.location) {
-                    const downloadPath = `${this.currentType}/${manifestName}/static/${execFile.location}`;
+                    const downloadPath = `${basePath}/static/${execFile.location}`;
                     filesSection = `
                         <div class="modal-section">
                             <h3>📦 Execution File</h3>
@@ -263,7 +362,7 @@ class LilkaRepository {
                         <div class="modal-section">
                             <h3>📦 Mod Files</h3>
                             ${modFiles.map(file => {
-                                const downloadPath = `${this.currentType}/${manifestName}/static/${file.location}`;
+                                const downloadPath = `${basePath}/static/${file.location}`;
                                 return `
                                     <div class="file-item">
                                         <p><strong>${this.escapeHtml(file.type || 'Unknown')}:</strong> ${this.escapeHtml(file.location || 'N/A')}</p>
@@ -305,7 +404,7 @@ class LilkaRepository {
                     <h3>📷 Screenshots</h3>
                     <div class="screenshots-gallery">
                         ${manifest.screenshots.map((screenshot, index) => {
-                            const screenshotPath = `${this.currentType}/${manifestName}/static/${screenshot}`;
+                            const screenshotPath = `${basePath}/static/${screenshot}`;
                             return `<img src="${screenshotPath}" alt="Screenshot" class="screenshot-thumb" data-index="${index}" onerror="this.style.display='none'">`;
                         }).join('')}
                     </div>
@@ -315,7 +414,7 @@ class LilkaRepository {
         
         // Store screenshots for lightbox
         this.currentScreenshots = manifest.screenshots ? manifest.screenshots.map(s => 
-            `${this.currentType}/${manifestName}/static/${s}`
+            `${basePath}/static/${s}`
         ) : [];
 
         modalBody.innerHTML = `

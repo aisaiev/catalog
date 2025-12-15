@@ -1,0 +1,13 @@
+name: "Case for Lilka Dev Board - D-Pad Edition"
+short_description: "Корпус для Lilka Dev Board з доданою хрестовиною (D-Pad)"
+description: "@DESCRIPTION.md"
+author: "@Shashel_1353421"
+icon: "image1.png"
+sources:
+  type: printables
+  location:
+    origin: https://www.printables.com/model/1295307-case-for-lilka-dev-board-d-pad-edition
+screenshots:
+  - image1.png
+  - image2.png
+  - image3.png

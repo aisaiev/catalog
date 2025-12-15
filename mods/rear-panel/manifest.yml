@@ -1,0 +1,11 @@
+name: "Rear panel for Lilka dev board"
+short_description: "Ultra-light and minimalistic rear panel"
+description: "@DESCRIPTION.md"
+author: "@Olexii_2870507"
+icon: "image.png"
+sources:
+  type: printables
+  location:
+    origin: https://www.printables.com/model/1162737-rear-panel-for-lilka-dev-board
+screenshots:
+  - image.png
