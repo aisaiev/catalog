@@ -3,7 +3,7 @@ sources:
   type: git
   location:
     origin: https://github.com/noisedsn/lilvideo
-executionfile:
+entryfile:
   type: binary
   location:
     origin: https://github.com/noisedsn/lilvideo/raw/main/player.bin

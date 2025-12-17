@@ -145,13 +145,23 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
 
     os.makedirs(static_files_path, exist_ok=True)
 
-    if type == "app" and manifest.get('executionfile'):
+    # Handle entryfile (main execution file) - new format
+    if type == "app" and manifest.get('entryfile'):
+        manifest['entryfile']['location'] = download_file(manifest['entryfile']['location'], static_files_path)
+    # Handle executionfile (legacy format) - keep for backwards compatibility
+    elif type == "app" and manifest.get('executionfile'):
         manifest['executionfile']['location'] = download_file(manifest['executionfile']['location'], static_files_path)
-    elif type == "mod" and manifest.get('modfiles'):
+    
+    # Handle additional files
+    if manifest.get('files'):
+        for file in manifest['files']:
+            if file.get('location'):
+                file['location'] = download_file(file['location'], static_files_path)
+    
+    # Handle modfiles for mods
+    if type == "mod" and manifest.get('modfiles'):
         for file in manifest['modfiles']:
             file['location'] = download_file(file['location'], static_files_path)
-    else:
-        pass
 
     path_to_modapp = type+"s/"+manifest['path']
 
@@ -218,9 +228,12 @@ def process_manifest(manifest, type) -> None:
                 "name": manifest["name"],
                 "short_description": manifest["short_description"]
             }
-            # Only include executionfile if it exists
-            if manifest.get("executionfile"):
-                short_data["executionfile"] = manifest["executionfile"]
+            # Include entryfile if it exists (new format)
+            if manifest.get("entryfile"):
+                short_data["entryfile"] = manifest["entryfile"]
+            # Include executionfile if it exists (legacy format)
+            elif manifest.get("executionfile"):
+                short_data["entryfile"] = manifest["executionfile"]  # Map to entryfile for consistency
             
             with open(os.path.join(output_dir, 'index_short.json'), 'w', encoding='utf-8') as file:
                 json.dump(short_data, file, indent=2, ensure_ascii=False)
@@ -247,9 +260,16 @@ def process_manifest(manifest, type) -> None:
             full_data["changelog"] = manifest["changelog"]
         
         if type == "app":
-            # Only include executionfile if it exists
-            if manifest.get("executionfile"):
-                full_data["executionfile"] = manifest["executionfile"]
+            # Include entryfile if it exists (new format)
+            if manifest.get("entryfile"):
+                full_data["entryfile"] = manifest["entryfile"]
+            # Include executionfile if it exists (legacy format) - map to entryfile
+            elif manifest.get("executionfile"):
+                full_data["entryfile"] = manifest["executionfile"]
+            
+            # Include additional files if they exist
+            if manifest.get("files"):
+                full_data["files"] = manifest["files"]
         elif type == "mod":
             # Only include modfiles if they exist
             if manifest.get("modfiles"):
@@ -436,11 +456,17 @@ def check_manifest(src, type) -> dict:
         return None
     
     if type == "app":
-        if 'executionfile' in manifest:
-            print(f"executionfile: {manifest['executionfile']}")
+        # Check for entryfile (new format) or executionfile (legacy)
+        if 'entryfile' in manifest:
+            print(f"entryfile: {manifest['entryfile']}")
+        elif 'executionfile' in manifest:
+            print(f"executionfile (legacy): {manifest['executionfile']}")
         else:
-            add_warning(src, "missing_field", "executionfile not found in manifest file (optional)", type)
-            # Don't return None - executionfile is now optional
+            add_warning(src, "missing_field", "entryfile/executionfile not found in manifest file (optional)", type)
+        
+        # Check for additional files
+        if 'files' in manifest:
+            print(f"files: {manifest['files']}")
     elif type == "mod":
         if 'modfiles' in manifest:
             print(f"Modfile: {manifest['modfiles']}")

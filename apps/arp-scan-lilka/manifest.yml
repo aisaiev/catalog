@@ -3,7 +3,7 @@ sources:
   type: git
   location:
     origin: https://github.com/sverdlyuk/ARP-scan-Lilka
-executionfile:
+entryfile:
   type: archive
   location:
     origin: https://github.com/sverdlyuk/ARP-scan-Lilka/archive/refs/tags/v0.1.zip

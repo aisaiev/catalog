@@ -342,20 +342,45 @@ class LilkaRepository {
         // Parse execution file or mod files
         let filesSection = '';
         try {
-            if (this.currentType === 'apps' && manifest.executionfile) {
-                const execFile = this.parseJsonString(manifest.executionfile);
-                if (execFile && execFile.location) {
-                    const downloadPath = `${basePath}/static/${execFile.location}`;
+            if (this.currentType === 'apps' && manifest.entryfile) {
+                const entryFile = this.parseJsonString(manifest.entryfile);
+                if (entryFile && entryFile.location) {
+                    const downloadPath = `${basePath}/static/${entryFile.location}`;
                     filesSection = `
                         <div class="modal-section">
-                            <h3>📦 Execution File</h3>
-                            <p><strong>Type:</strong> ${this.escapeHtml(execFile.type || 'N/A')}</p>
-                            <p><strong>File:</strong> ${this.escapeHtml(execFile.location || 'N/A')}</p>
-                            <a href="${downloadPath}" download class="download-btn">⬇️ Download Execution File</a>
+                            <h3>📦 Entry File</h3>
+                            <p><strong>Type:</strong> ${this.escapeHtml(entryFile.type || 'N/A')}</p>
+                            <p><strong>File:</strong> ${this.escapeHtml(entryFile.location || 'N/A')}</p>
+                            <a href="${downloadPath}" download class="download-btn">⬇️ Download Entry File</a>
                         </div>
                     `;
                 }
-            } else if (this.currentType === 'mods' && manifest.modfiles) {
+            }
+            
+            // Add additional files section
+            if (manifest.files && Array.isArray(manifest.files) && manifest.files.length > 0) {
+                const additionalFilesSection = `
+                    <div class="modal-section">
+                        <h3>📁 Additional Files</h3>
+                        ${manifest.files.map(file => {
+                            const fileObj = typeof file === 'string' ? this.parseJsonString(file) : file;
+                            if (fileObj && fileObj.location) {
+                                const downloadPath = `${basePath}/static/${fileObj.location}`;
+                                return `
+                                    <div class="file-item">
+                                        <p><strong>${this.escapeHtml(fileObj.type || 'Unknown')}:</strong> ${this.escapeHtml(fileObj.location || 'N/A')}</p>
+                                        <a href="${downloadPath}" download class="download-btn-small">⬇️ Download</a>
+                                    </div>
+                                `;
+                            }
+                            return '';
+                        }).join('')}
+                    </div>
+                `;
+                filesSection += additionalFilesSection;
+            }
+            
+            if (this.currentType === 'mods' && manifest.modfiles) {
                 const modFiles = this.parseJsonString(manifest.modfiles);
                 if (Array.isArray(modFiles)) {
                     filesSection = `

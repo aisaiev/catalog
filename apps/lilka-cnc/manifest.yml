@@ -3,7 +3,7 @@ sources:
   type: git
   location:
     origin: https://github.com/bossly/lilka_cnc
-executionfile:
+entryfile:
   type: binary
   location:
     origin: https://github.com/bossly/lilka_cnc/releases/download/0.0.1/lilcnc_0.0.1_alpha.zip

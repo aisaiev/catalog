@@ -3,7 +3,7 @@ sources:
   type: git
   location:
     origin: https://github.com/aisaiev/lilradio
-executionfile:
+entryfile:
   type: binary
   location:
     origin: https://github.com/aisaiev/lilradio/releases/download/v1/lilradio.bin

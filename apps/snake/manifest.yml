@@ -3,7 +3,7 @@ sources:
   type: git
   location:
     origin: https://github.com/sverdlyuk/lilka-snake
-executionfile:
+entryfile:
   type: lua
   location:
     origin: https://raw.githubusercontent.com/sverdlyuk/lilka-snake/refs/heads/main/snake.lua
