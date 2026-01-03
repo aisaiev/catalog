@@ -1,0 +1,17 @@
+name: Lilka Desktop Monitor
+sources:
+  type: git
+  location:
+    origin: https://github.com/lilka-dev/mpeg_stream_player
+entryfile:
+  type: binary
+  location:
+    origin: https://github.com/lilka-dev/mpeg_stream_player/releases/download/v1.0.0/desktop-monitor.bin
+short_description: Стрімінг екрану комп'ютера на Лілку через WiFi (MJPEG)
+description: "@DESCRIPTION.md"
+author: "@black-ghost-off"
+license: MIT
+keira_version: 1.0.0
+icon: image.png
+screenshots:
+  - image.png
