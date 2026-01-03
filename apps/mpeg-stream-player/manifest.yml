@@ -6,7 +6,7 @@ sources:
 entryfile:
   type: binary
   location:
-    origin: https://github.com/lilka-dev/mpeg_stream_player/releases/download/v1.0.0/desktop-monitor.bin
+    origin: https://github.com/lilka-dev/mpeg_stream_player/releases/download/v1.0.0/mpeg_stream_player.bin
 short_description: Стрімінг відео через WiFi (MJPEG)
 description: "@DESCRIPTION.md"
 author: "@black-ghost-off"
