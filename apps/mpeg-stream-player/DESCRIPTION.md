@@ -1,10 +1,8 @@
-# Lilka Desktop Monitor
+# Mpeg Video Streaming
 
-Стрімінг екрану комп'ютера на [Лілку](https://lilka.dev) через WiFi за допомогою MJPEG. Ця прошивка дозволяє виводити зображення з екрану комп'ютера в реальному часі на 1.69" TFT дисплей Лілки, використовуючи ефективну JPEG-компресію та GStreamer.
+Стрімінг відео  на [Лілку](https://lilka.dev) через WiFi за допомогою MJPEG.
 
-Stream your computer screen to Lilka device over WiFi using MJPEG. This firmware enables real-time display streaming to Lilka's 1.69" TFT display using efficient JPEG compression and GStreamer.
-
-Based on the ESP32 Desktop Monitor [project](https://github.com/tuckershannon/ESP32-Desktop-Monitor).
+Stream your computer screen to Lilka device over WiFi using MJPEG. 
 
 ## Як це працює
 
