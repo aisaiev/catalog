@@ -72,6 +72,11 @@ pio run -e uk -t upload  # Українська версія
 pio run -e en -t upload  # English version
 ```
 
+## Автори
+
+- [@black-ghost-off](https://github.com/black-ghost-off)
+
+
 ## License
 
 MIT License
