@@ -22,7 +22,7 @@ class LilkaRepository {
     if (!this.supportedLanguages.includes(lang)) {
       const browser = (navigator.language || '').slice(0, 2).toLowerCase();
       lang = this.supportedLanguages.includes(browser) ? browser :
-                                                          this.defaultLanguage;
+                                                         this.defaultLanguage;
     }
     return lang;
   }
@@ -97,7 +97,7 @@ class LilkaRepository {
     // Handle direct item link: ?type=apps&item=ble.app
     if (item && type) {
       this.currentType = type;
-      this.updateActiveTab(type);
+      this.showView(type);
       // Load the page list in background first
       await this.loadPage();
       // Then open the modal
@@ -108,14 +108,8 @@ class LilkaRepository {
     // Handle examples page
     if (type === 'examples') {
       this.currentType = type;
-      this.updateActiveTab('examples');
+      this.showView('examples');
       const examplesContainer = document.getElementById('examples');
-      document.getElementById('content').style.display = 'none';
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('error').style.display = 'none';
-      document.getElementById('docs').style.display = 'none';
-      document.getElementById('authors').style.display = 'none';
-      examplesContainer.style.display = 'block';
 
       const exPath = params.get('path') || '';
       this.examplesCurrentPath = exPath;
@@ -149,7 +143,6 @@ class LilkaRepository {
       this.currentType = type;
       const authorParam = params.get('author');
       await this.showAuthors();
-      this.updateActiveTab('authors');
       if (authorParam) {
         const sectionId = `author-${this.authorSlug(authorParam)}`;
         const section = document.getElementById(sectionId);
@@ -166,7 +159,7 @@ class LilkaRepository {
     // Handle page navigation: ?type=apps&page=1
     if (type) {
       this.currentType = type;
-      this.currentPage = page ? parseInt(page) : 0;
+      this.currentPage = parseInt(page, 10) || 0;
       await this.switchType(type);
       return;
     }
@@ -175,24 +168,22 @@ class LilkaRepository {
     await this.loadPage();
   }
 
-  updateActiveTab(type) {
-    // Update active tab
+  // Highlight the tab button for `type` and toggle the main containers
+  // (list content, loading, error, docs, authors, examples).
+  showView(type) {
     document.querySelectorAll('.tab-button').forEach(btn => {
-      btn.classList.remove('active');
+      btn.classList.toggle('active', btn.dataset.type === type);
     });
-    document.querySelector(`[data-type="${type}"]`).classList.add('active');
 
-    // Show/hide appropriate content
+    const isList = !['docs', 'authors', 'examples'].includes(type);
     document.getElementById('content').style.display =
-        (type === 'docs' || type === 'authors' || type === 'examples') ?
-        'none' :
-        'block';
-    document.getElementById('docs').style.display =
-        type === 'docs' ? 'block' : 'none';
-    document.getElementById('authors').style.display =
-        type === 'authors' ? 'block' : 'none';
-    document.getElementById('examples').style.display =
-        type === 'examples' ? 'block' : 'none';
+        isList ? 'block' : 'none';
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'none';
+    for (const id of ['docs', 'authors', 'examples']) {
+      document.getElementById(id).style.display =
+          id === type ? 'block' : 'none';
+    }
   }
 
   async openDirectItem(type, itemName) {
@@ -295,77 +286,61 @@ class LilkaRepository {
       });
     });
 
-    // Pagination - top
-    document.getElementById('prevPage').addEventListener('click', () => {
-      if (this.currentPage > 0) {
-        this.currentPage--;
-        this.loadPage();
-      }
-    });
+    // Pagination (top & bottom)
+    for (const id of ['prevPage', 'prevPageBottom']) {
+      document.getElementById(id).addEventListener('click', () => {
+        if (this.currentPage > 0) {
+          this.currentPage--;
+          this.loadPage();
+        }
+      });
+    }
 
-    document.getElementById('nextPage').addEventListener('click', () => {
-      if (this.currentPage < this.totalPages - 1) {
-        this.currentPage++;
-        this.loadPage();
-      }
-    });
-
-    // Pagination - bottom
-    document.getElementById('prevPageBottom').addEventListener('click', () => {
-      if (this.currentPage > 0) {
-        this.currentPage--;
-        this.loadPage();
-      }
-    });
-
-    document.getElementById('nextPageBottom').addEventListener('click', () => {
-      if (this.currentPage < this.totalPages - 1) {
-        this.currentPage++;
-        this.loadPage();
-      }
-    });
+    for (const id of ['nextPage', 'nextPageBottom']) {
+      document.getElementById(id).addEventListener('click', () => {
+        if (this.currentPage < this.totalPages - 1) {
+          this.currentPage++;
+          this.loadPage();
+        }
+      });
+    }
 
     // Modal
     const modal = document.getElementById('modal');
     const closeBtn = document.querySelector('.close');
 
-    closeBtn.addEventListener('click', () => {
-      modal.style.display = 'none';
-      this._currentManifest = null;
-      this._currentManifestName = null;
-      // Return to list view URL
-      this.updateURL(this.currentType, this.currentPage);
-    });
+    closeBtn.addEventListener('click', () => this.closeModal());
 
     window.addEventListener('click', (e) => {
       if (e.target === modal) {
-        modal.style.display = 'none';
-        this._currentManifest = null;
-        this._currentManifestName = null;
-        // Return to list view URL
-        this.updateURL(this.currentType, this.currentPage);
+        this.closeModal();
       }
     });
 
     // Close modal with ESC key
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && modal.style.display === 'block') {
-        modal.style.display = 'none';
-        this._currentManifest = null;
-        this._currentManifestName = null;
-        // Return to list view URL
-        this.updateURL(this.currentType, this.currentPage);
+        this.closeModal();
       }
     });
 
     // Handle browser back/forward buttons
-    window.addEventListener('popstate', (e) => {
+    window.addEventListener('popstate', () => {
       modal.style.display = 'none';
       this._currentManifest = null;
       this._currentManifestName = null;
       this.handleRouting();
     });
   }
+
+  closeModal() {
+    document.getElementById('modal').style.display = 'none';
+    this._currentManifest = null;
+    this._currentManifestName = null;
+    // Return to list view URL
+    this.updateURL(this.currentType, this.currentPage);
+  }
+
   async switchType(type) {
     this.currentType = type;
     const params = new URLSearchParams(window.location.search);
@@ -373,31 +348,15 @@ class LilkaRepository {
       this.currentPage = 0;
     }
 
-    // Update active tab
-    document.querySelectorAll('.tab-button').forEach(btn => {
-      btn.classList.remove('active');
-    });
-    document.querySelector(`[data-type="${type}"]`).classList.add('active');
-
-    // Show/hide appropriate content
-    document.getElementById('content').style.display = 'block';
-    document.getElementById('docs').style.display = 'none';
-    document.getElementById('authors').style.display = 'none';
-    document.getElementById('examples').style.display = 'none';
+    this.showView(type);
 
     await this.loadPage();
     window.scrollTo({top: 0});
   }
 
   async showExamples() {
-    this.updateActiveTab('examples');
-    document.getElementById('content').style.display = 'none';
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('error').style.display = 'none';
-    document.getElementById('docs').style.display = 'none';
-    document.getElementById('authors').style.display = 'none';
+    this.showView('examples');
     const examplesContainer = document.getElementById('examples');
-    examplesContainer.style.display = 'block';
 
     this.examplesCurrentPath = '';
     this._examplesFileCache = {};
@@ -730,14 +689,8 @@ class LilkaRepository {
   }
 
   async showAuthors() {
-    this.updateActiveTab('authors');
-    document.getElementById('content').style.display = 'none';
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('error').style.display = 'none';
-    document.getElementById('docs').style.display = 'none';
-    document.getElementById('examples').style.display = 'none';
+    this.showView('authors');
     const authorsContainer = document.getElementById('authors');
-    authorsContainer.style.display = 'block';
 
     this.updateURL('authors');
 
@@ -823,8 +776,8 @@ class LilkaRepository {
         html += `<h3>${this.escapeHtml(itemName)}</h3>`;
         html += `<span class="author-item-type type-${item.type}">${
             typeLabel}</span>`;
-        html += `<div class="short-desc">${
-            this.escapeHtml(itemShortDesc)}</div>`;
+        html +=
+            `<div class="short-desc">${this.escapeHtml(itemShortDesc)}</div>`;
         html += `</div>`;
       }
 
@@ -835,20 +788,8 @@ class LilkaRepository {
   }
 
   async showDocumentation() {
-    // Update active tab
-    document.querySelectorAll('.tab-button').forEach(btn => {
-      btn.classList.remove('active');
-    });
-    document.querySelector('[data-type="docs"]').classList.add('active');
-
-    // Hide items content, show docs
-    document.getElementById('content').style.display = 'none';
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('error').style.display = 'none';
-    document.getElementById('authors').style.display = 'none';
-    document.getElementById('examples').style.display = 'none';
+    this.showView('docs');
     const docsContainer = document.getElementById('docs');
-    docsContainer.style.display = 'block';
 
     try {
       // Load the README matching the selected language, falling back to
@@ -891,10 +832,9 @@ class LilkaRepository {
 
       const data = await response.json();
       this.totalPages = data.total_pages;
-      // Remove trailing comma from manifests array
       this.manifests = data.manifests.filter(m => m && m.trim());
 
-      this.loadManifests();
+      await this.loadManifests();
       this.updatePagination();
 
       // Update URL when page loads
@@ -907,34 +847,32 @@ class LilkaRepository {
     }
   }
 
-  loadManifests() {
+  async loadManifests() {
     const itemsContainer = document.getElementById('items');
     itemsContainer.innerHTML = '';
 
-    for (const manifestName of this.manifests) {
+    // Fetch all manifests in parallel, then render in original order
+    const manifests = await Promise.all(this.manifests.map(async (name) => {
+      const manifestPath = `${this.currentType}/${name}/index.json`;
       try {
-        const manifestPath = `${this.currentType}/${manifestName}/index.json`;
-        fetch(manifestPath)
-            .then(response => {
-              if (!response.ok) {
-                console.warn(`Failed to load ${manifestPath}`);
-                return null;
-              }
-              return response.json();
-            })
-            .then(manifest => {
-              if (manifest) {
-                const card = this.createItemCard(manifest, manifestName);
-                itemsContainer.appendChild(card);
-              }
-            })
-            .catch(error => {
-              console.error(`Error loading manifest ${manifestName}:`, error);
-            });
+        const response = await fetch(manifestPath);
+        if (!response.ok) {
+          console.warn(`Failed to load ${manifestPath}`);
+          return null;
+        }
+        return await response.json();
       } catch (error) {
-        console.error(`Error loading manifest ${manifestName}:`, error);
+        console.error(`Error loading manifest ${name}:`, error);
+        return null;
       }
-    }
+    }));
+
+    manifests.forEach((manifest, i) => {
+      if (manifest) {
+        itemsContainer.appendChild(
+            this.createItemCard(manifest, this.manifests[i]));
+      }
+    });
   }
 
   createItemCard(manifest, manifestName) {
@@ -945,7 +883,6 @@ class LilkaRepository {
     const iconPath =
         `${this.currentType}/${manifestName}/static/${manifest.icon}`;
 
-    const authorId = this.authorSlug(manifest.author);
     const cardName = this.localized(manifest, 'name');
     const cardShortDesc = this.localized(manifest, 'short_description') || '';
     card.innerHTML = `
@@ -961,8 +898,7 @@ class LilkaRepository {
             manifest.author)}" class="author-link" data-author="${
         this.escapeHtml(
             manifest.author)}">${this.escapeHtml(manifest.author)}</a></div>
-            <div class="short-desc">${
-        this.escapeHtml(cardShortDesc)}</div>
+            <div class="short-desc">${this.escapeHtml(cardShortDesc)}</div>
         `;
 
     // Author link click — navigate to authors page
@@ -990,18 +926,207 @@ class LilkaRepository {
     return card;
   }
 
-  showModal(manifest, manifestName) {
-    console.log('Opening modal for:', manifestName, manifest);
+  // --- Modal section renderers -------------------------------------------
 
+  renderFileItem(file, basePath, itemName, event, itemAttr) {
+    if (!file || !file.location) return '';
+    return `
+      <div class="file-item">
+        <p><strong>${this.escapeHtml(file.type || 'Unknown')}:</strong> ${
+        this.escapeHtml(file.location)}</p>
+        <a href="${basePath}/static/${
+        file.location}" download class="download-btn-small" data-umami-event="${
+        event}" data-umami-event-${itemAttr}="${
+        this.escapeHtml(itemName)}" data-umami-event-type="${
+        this.escapeHtml(file.type)}">⬇️ Download</a>
+      </div>`;
+  }
+
+  renderFilesSection(manifest, basePath) {
+    let html = '';
+
+    if (this.currentType === 'apps' && manifest.entryfile &&
+        manifest.entryfile.location) {
+      const entryFile = manifest.entryfile;
+      html += `
+        <div class="modal-section">
+          <h3>📦 Entry File</h3>
+          <p><strong>Type:</strong> ${
+          this.escapeHtml(entryFile.type || 'N/A')}</p>
+          <p><strong>File:</strong> ${this.escapeHtml(entryFile.location)}</p>
+          <a href="${basePath}/static/${
+          entryFile
+              .location}" download class="download-btn" data-umami-event="download-entry-file" data-umami-event-app="${
+          this.escapeHtml(manifest.name)}">⬇️ Download Entry File</a>
+        </div>`;
+    }
+
+    if (Array.isArray(manifest.files) && manifest.files.length > 0) {
+      html += `
+        <div class="modal-section">
+          <h3>📁 Additional Files</h3>
+          ${
+          manifest.files
+              .map(
+                  f => this.renderFileItem(
+                      f, basePath, manifest.name, 'download-additional-file',
+                      'app'))
+              .join('')}
+        </div>`;
+    }
+
+    if (this.currentType === 'mods' && Array.isArray(manifest.modfiles)) {
+      html += `
+        <div class="modal-section">
+          <h3>📦 Mod Files</h3>
+          ${
+          manifest.modfiles
+              .map(
+                  f => this.renderFileItem(
+                      f, basePath, manifest.name, 'download-mod-file', 'mod'))
+              .join('')}
+        </div>`;
+    }
+
+    if (manifest.package) {
+      html += `
+        <div class="modal-section">
+          <h3>📦 Package ZIP</h3>
+          <p><strong>File:</strong> ${this.escapeHtml(manifest.package)}</p>
+          <a href="${basePath}/${
+          manifest
+              .package}" download class="download-btn" data-umami-event="download-package-zip" data-umami-event-item="${
+          this.escapeHtml(manifest.name)}">⬇️ Download ZIP</a>
+        </div>`;
+    }
+
+    return html;
+  }
+
+  renderSecurityFile(f) {
+    let avBadge = '';
+    if (f.av_scan) {
+      const cls = f.av_scan.status === 'clean' ? 'security-clean' :
+          f.av_scan.status === 'infected'      ? 'security-infected' :
+                                                 'security-noav';
+      const label = f.av_scan.status === 'clean' ?
+          '✅ Clean' :
+          (f.av_scan.status === 'infected' ? '❌ ' : '') +
+              this.escapeHtml(f.av_scan.detail);
+      avBadge = `<span class="security-badge-sm ${cls}">${label}</span>`;
+    }
+
+    const hashRow = (label, hash, display) => `
+      <span class="security-hash" title="${label} checksum">
+        🔑 ${label}: <code>${hash ? display : 'N/A'}</code>
+        ${
+        hash ? `<button class="copy-hash-btn" data-hash="${hash}" title="Copy ${
+                   label}">📋</button>` :
+               ''}
+      </span>`;
+
+    return `
+      <div class="security-file-item">
+        <div class="security-file-name">
+          <strong>${this.escapeHtml(f.file)}</strong>
+          ${avBadge}
+        </div>
+        <div class="security-file-details">
+          ${
+        hashRow(
+            'SHA-256', f.sha256,
+            f.sha256 ? f.sha256.substring(0, 16) + '…' : '')}
+          ${hashRow('MD5', f.md5, f.md5)}
+          <span class="security-size">${
+        f.size ? (f.size / 1024).toFixed(1) + ' KB' : ''}</span>
+        </div>
+      </div>`;
+  }
+
+  renderSecuritySection(manifest) {
+    const sec = manifest.security;
+    if (!sec || !sec.files || sec.files.length === 0) return '';
+
+    const scanDate =
+        sec.scan_date ? new Date(sec.scan_date).toLocaleString() : 'N/A';
+    const hasAvScan = sec.clamav_available && sec.files.some(f => f.av_scan);
+    const allClean =
+        sec.files.every(f => !f.av_scan || f.av_scan.status === 'clean');
+
+    const overallBadge = !hasAvScan ?
+        '<span class="security-badge security-noav">🔒 Checksums only</span>' :
+        allClean ?
+        '<span class="security-badge security-clean">✅ All files clean</span>' :
+        '<span class="security-badge security-infected">⚠️ Threats detected</span>';
+
+    return `
+      <div class="modal-section security-section">
+        <h3>🛡️ Security</h3>
+        <div class="security-header">
+          ${overallBadge}
+          <span class="security-date">Scanned: ${
+        this.escapeHtml(scanDate)}</span>
+        </div>
+        <div class="security-files">
+          ${sec.files.map(f => this.renderSecurityFile(f)).join('')}
+        </div>
+      </div>`;
+  }
+
+  renderSourcesSection(manifest) {
+    const sources = manifest.sources;
+    if (!sources) return '';
+    const origin = sources.location && sources.location.origin;
+    return `
+      <div class="modal-section">
+        <h3>🔗 Sources</h3>
+        <p><strong>Type:</strong> ${this.escapeHtml(sources.type || 'N/A')}</p>
+        ${
+        origin ?
+            `<p><strong>Repository:</strong> <a href="${
+                this.escapeHtml(
+                    origin)}" target="_blank" style="color: var(--primary-color);">${
+                this.escapeHtml(origin)}</a></p>` :
+            ''}
+      </div>`;
+  }
+
+  renderScreenshotsSection(manifest, basePath) {
+    if (!Array.isArray(manifest.screenshots) ||
+        manifest.screenshots.length === 0) {
+      return '';
+    }
+    return `
+      <div class="modal-section">
+        <h3>📷 Screenshots</h3>
+        <div class="screenshots-gallery">
+          ${
+        manifest.screenshots
+            .map(
+                (s, index) => `<img src="${basePath}/static/${
+                    s}" alt="Screenshot" class="screenshot-thumb" data-index="${
+                    index}" onerror="this.style.display='none'">`)
+            .join('')}
+        </div>
+      </div>`;
+  }
+
+  renderMarkdownSection(title, text) {
+    if (!text || !text.trim()) return '';
+    return `
+      <div class="modal-section">
+        <h3>${title}</h3>
+        <div class="markdown-content">${marked.parse(text)}</div>
+      </div>`;
+  }
+
+  showModal(manifest, manifestName) {
     // Remember the currently open manifest so it can be re-rendered when the
     // language is switched while the modal is open.
     this._currentManifest = manifest;
     this._currentManifestName = manifestName;
 
-    // Resolve localized text fields for the current language
     const modalName = this.localized(manifest, 'name');
-    const modalDescription = this.localized(manifest, 'description');
-    const modalChangelog = this.localized(manifest, 'changelog');
 
     // Track manifest views
     if (window.umami) {
@@ -1016,284 +1141,39 @@ class LilkaRepository {
     const modal = document.getElementById('modal');
     const modalBody = document.getElementById('modalBody');
 
-    // Build paths - manifestName already includes the full path relative to
-    // type
+    // manifestName already includes the full path relative to type
     const basePath = `${this.currentType}/${manifestName}`;
-    const iconPath = `${basePath}/static/${manifest.icon}`;
-
-    // Parse execution file or mod files
-    let filesSection = '';
-    try {
-      if (this.currentType === 'apps' && manifest.entryfile) {
-        const entryFile = this.parseJsonString(manifest.entryfile);
-        if (entryFile && entryFile.location) {
-          const downloadPath = `${basePath}/static/${entryFile.location}`;
-          filesSection = `
-                        <div class="modal-section">
-                            <h3>📦 Entry File</h3>
-                            <p><strong>Type:</strong> ${
-              this.escapeHtml(entryFile.type || 'N/A')}</p>
-                            <p><strong>File:</strong> ${
-              this.escapeHtml(entryFile.location || 'N/A')}</p>
-                            <a href="${
-              downloadPath}" download class="download-btn" data-umami-event="download-entry-file" data-umami-event-app="${
-              this.escapeHtml(manifest.name)}">⬇️ Download Entry File</a>
-                        </div>
-                    `;
-        }
-      }
-
-      // Add additional files section
-      if (manifest.files && Array.isArray(manifest.files) &&
-          manifest.files.length > 0) {
-        const additionalFilesSection = `
-                    <div class="modal-section">
-                        <h3>📁 Additional Files</h3>
-                        ${
-            manifest.files
-                .map(file => {
-                  const fileObj = typeof file === 'string' ?
-                      this.parseJsonString(file) :
-                      file;
-                  if (fileObj && fileObj.location) {
-                    const downloadPath =
-                        `${basePath}/static/${fileObj.location}`;
-                    return `
-                                    <div class="file-item">
-                                        <p><strong>${
-                        this.escapeHtml(fileObj.type || 'Unknown')}:</strong> ${
-                        this.escapeHtml(fileObj.location || 'N/A')}</p>
-                                        <a href="${
-                        downloadPath}" download class="download-btn-small" data-umami-event="download-additional-file" data-umami-event-app="${
-                        this.escapeHtml(
-                            manifest.name)}" data-umami-event-type="${
-                        this.escapeHtml(fileObj.type)}">⬇️ Download</a>
-                                    </div>
-                                `;
-                  }
-                  return '';
-                })
-                .join('')}
-                    </div>
-                `;
-        filesSection += additionalFilesSection;
-      }
-
-      if (this.currentType === 'mods' && manifest.modfiles) {
-        const modFiles = this.parseJsonString(manifest.modfiles);
-        if (Array.isArray(modFiles)) {
-          filesSection = `
-                        <div class="modal-section">
-                            <h3>📦 Mod Files</h3>
-                            ${
-              modFiles
-                  .map(file => {
-                    const downloadPath = `${basePath}/static/${file.location}`;
-                    return `
-                                    <div class="file-item">
-                                        <p><strong>${
-                        this.escapeHtml(file.type || 'Unknown')}:</strong> ${
-                        this.escapeHtml(file.location || 'N/A')}</p>
-                                        <a href="${
-                        downloadPath}" download class="download-btn-small" data-umami-event="download-mod-file" data-umami-event-mod="${
-                        this.escapeHtml(
-                            manifest.name)}" data-umami-event-type="${
-                        this.escapeHtml(file.type)}">⬇️ Download</a>
-                                    </div>
-                                `;
-                  })
-                  .join('')}
-                        </div>
-                    `;
-        }
-      }
-
-      if (manifest.package) {
-        const packageDownloadPath = `${basePath}/${manifest.package}`;
-        filesSection += `
-                    <div class="modal-section">
-                        <h3>📦 Package ZIP</h3>
-                        <p><strong>File:</strong> ${
-            this.escapeHtml(manifest.package)}</p>
-                        <a href="${
-            packageDownloadPath}" download class="download-btn" data-umami-event="download-package-zip" data-umami-event-item="${
-            this.escapeHtml(manifest.name)}">⬇️ Download ZIP</a>
-                    </div>
-                `;
-      }
-    } catch (error) {
-      console.error('Error parsing files section:', error);
-      filesSection = `
-                <div class="modal-section">
-                    <h3>📦 Files</h3>
-                    <p style="color: var(--error);">Error loading file information</p>
-                </div>
-            `;
-    }
-
-    // Build security section
-    let securitySection = '';
-    if (manifest.security && manifest.security.files &&
-        manifest.security.files.length > 0) {
-      const sec = manifest.security;
-      const scanDate =
-          sec.scan_date ? new Date(sec.scan_date).toLocaleString() : 'N/A';
-      const allClean =
-          sec.files.every(f => !f.av_scan || f.av_scan.status === 'clean');
-      const hasAvScan = sec.clamav_available && sec.files.some(f => f.av_scan);
-
-      let overallBadge;
-      if (hasAvScan) {
-        overallBadge = allClean ?
-            '<span class="security-badge security-clean">✅ All files clean</span>' :
-            '<span class="security-badge security-infected">⚠️ Threats detected</span>';
-      } else {
-        overallBadge =
-            '<span class="security-badge security-noav">🔒 Checksums only</span>';
-      }
-
-      securitySection = `
-        <div class="modal-section security-section">
-          <h3>🛡️ Security</h3>
-          <div class="security-header">
-            ${overallBadge}
-            <span class="security-date">Scanned: ${
-          this.escapeHtml(scanDate)}</span>
-          </div>
-          <div class="security-files">
-            ${
-          sec.files
-              .map(f => {
-                const avBadge = f.av_scan ?
-                    (f.av_scan.status === 'clean' ?
-                         '<span class="security-badge-sm security-clean">✅ Clean</span>' :
-                         f.av_scan.status === 'infected' ?
-                         '<span class="security-badge-sm security-infected">❌ ' +
-                             this.escapeHtml(f.av_scan.detail) + '</span>' :
-                         '<span class="security-badge-sm security-noav">' +
-                             this.escapeHtml(f.av_scan.detail) + '</span>') :
-                    '';
-                return `
-                <div class="security-file-item">
-                  <div class="security-file-name">
-                    <strong>${this.escapeHtml(f.file)}</strong>
-                    ${avBadge}
-                  </div>
-                  <div class="security-file-details">
-                    <span class="security-hash" title="SHA-256 checksum">
-                      🔑 SHA-256: <code>${
-                    f.sha256 ? f.sha256.substring(0, 16) + '…' : 'N/A'}</code>
-                      ${
-                    f.sha256 ?
-                        '<button class="copy-hash-btn" data-hash="' + f.sha256 +
-                            '" title="Copy full SHA-256">📋</button>' :
-                        ''}
-                    </span>
-                    <span class="security-hash" title="MD5 checksum">
-                      🔑 MD5: <code>${f.md5 ? f.md5 : 'N/A'}</code>
-                      ${
-                    f.md5 ? '<button class="copy-hash-btn" data-hash="' +
-                            f.md5 + '" title="Copy MD5">📋</button>' :
-                            ''}
-                    </span>
-                    <span class="security-size">${
-                    f.size ? (f.size / 1024).toFixed(1) + ' KB' : ''}</span>
-                  </div>
-                </div>`;
-              })
-              .join('')}
-          </div>
-        </div>
-      `;
-    }
-
-    // Parse sources
-    const sources = this.parseJsonString(manifest.sources);
-    const sourcesSection = sources ?
-        `
-            <div class="modal-section">
-                <h3>🔗 Sources</h3>
-                <p><strong>Type:</strong> ${
-            this.escapeHtml(sources.type || 'N/A')}</p>
-                ${
-            sources.location && sources.location.origin ?
-                `<p><strong>Repository:</strong> <a href="${
-                    this.escapeHtml(
-                        sources.location
-                            .origin)}" target="_blank" style="color: var(--primary-color);">${
-                    this.escapeHtml(sources.location.origin)}</a></p>` :
-                ''}
-            </div>
-        ` :
-        '';
-
-    // Create screenshots gallery
-    let screenshotsSection = '';
-    if (manifest.screenshots && Array.isArray(manifest.screenshots) &&
-        manifest.screenshots.length > 0) {
-      screenshotsSection = `
-                <div class="modal-section">
-                    <h3>📷 Screenshots</h3>
-                    <div class="screenshots-gallery">
-                        ${
-          manifest.screenshots
-              .map((screenshot, index) => {
-                const screenshotPath = `${basePath}/static/${screenshot}`;
-                return `<img src="${
-                    screenshotPath}" alt="Screenshot" class="screenshot-thumb" data-index="${
-                    index}" onerror="this.style.display='none'">`;
-              })
-              .join('')}
-                    </div>
-                </div>
-            `;
-    }
 
     // Store screenshots for lightbox
-    this.currentScreenshots = manifest.screenshots ?
-        manifest.screenshots.map(s => `${basePath}/static/${s}`) :
-        [];
+    this.currentScreenshots =
+        (manifest.screenshots || []).map(s => `${basePath}/static/${s}`);
 
     modalBody.innerHTML = `
-            <div class="modal-header">
-                <h2>${this.escapeHtml(modalName)}</h2>
-                <div class="author"><a href="?type=authors&author=${
+        <div class="modal-header">
+            <h2>${this.escapeHtml(modalName)}</h2>
+            <div class="author"><a href="?type=authors&author=${
         encodeURIComponent(
             manifest.author)}" class="author-link" data-author="${
         this.escapeHtml(
             manifest.author)}">${this.escapeHtml(manifest.author)}</a></div>
-            </div>
-            ${
+        </div>
+        ${
         manifest.icon ?
-            `<img src="${iconPath}" alt="${
+            `<img src="${basePath}/static/${manifest.icon}" alt="${
                 this.escapeHtml(
                     modalName)}" class="modal-icon" onerror="this.style.display='none'">` :
             ''}
-            ${screenshotsSection}
-            ${
-        modalDescription && modalDescription.trim() ?
-            `
-            <div class="modal-section">
-                <h3>📝 Description</h3>
-                <div class="markdown-content">${
-                marked.parse(modalDescription)}</div>
-            </div>
-            ` :
-            ''}
-            ${
-        modalChangelog && modalChangelog.trim() ?
-            `
-            <div class="modal-section">
-                <h3>📋 Changelog</h3>
-                <div class="markdown-content">${
-                marked.parse(modalChangelog)}</div>
-            </div>
-            ` :
-            ''}
-            ${filesSection}
-            ${securitySection}
-            ${sourcesSection}
-        `;
+        ${this.renderScreenshotsSection(manifest, basePath)}
+        ${
+        this.renderMarkdownSection(
+            '📝 Description', this.localized(manifest, 'description'))}
+        ${
+        this.renderMarkdownSection(
+            '📋 Changelog', this.localized(manifest, 'changelog'))}
+        ${this.renderFilesSection(manifest, basePath)}
+        ${this.renderSecuritySection(manifest)}
+        ${this.renderSourcesSection(manifest)}
+    `;
 
     modal.style.display = 'block';
 
@@ -1303,40 +1183,34 @@ class LilkaRepository {
       modalContent.scrollTop = 0;
     }
 
-    console.log('Modal opened successfully');
+    // Screenshot thumbnails open the lightbox
+    modalBody.querySelectorAll('.screenshot-thumb').forEach(thumb => {
+      thumb.addEventListener('click', (e) => {
+        this.openLightbox(parseInt(e.target.dataset.index, 10));
+      });
+    });
 
-    // Add click handlers for screenshots after modal is populated
-    setTimeout(() => {
-      document.querySelectorAll('.screenshot-thumb').forEach(thumb => {
-        thumb.addEventListener('click', (e) => {
-          const index = parseInt(e.target.dataset.index);
-          this.openLightbox(index);
+    // Author link navigates to the authors page
+    const modalAuthorLink = modalBody.querySelector('.author-link');
+    if (modalAuthorLink) {
+      modalAuthorLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.navigateToAuthor(modalAuthorLink.dataset.author);
+      });
+    }
+
+    // Copy-hash buttons
+    modalBody.querySelectorAll('.copy-hash-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigator.clipboard.writeText(btn.dataset.hash).then(() => {
+          const original = btn.textContent;
+          btn.textContent = '✓';
+          setTimeout(() => btn.textContent = original, 1500);
         });
       });
-
-      // Add click handler for author link in modal
-      const modalAuthorLink = modalBody.querySelector('.author-link');
-      if (modalAuthorLink) {
-        modalAuthorLink.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this.navigateToAuthor(modalAuthorLink.dataset.author);
-        });
-      }
-
-      // Add click handlers for copy-hash buttons
-      document.querySelectorAll('.copy-hash-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          const hash = btn.dataset.hash;
-          navigator.clipboard.writeText(hash).then(() => {
-            const original = btn.textContent;
-            btn.textContent = '✓';
-            setTimeout(() => btn.textContent = original, 1500);
-          });
-        });
-      });
-    }, 100);
+    });
   }
 
   openLightbox(index) {
@@ -1384,21 +1258,6 @@ class LilkaRepository {
         'none';
     counter.textContent =
         `${this.currentLightboxIndex + 1} / ${this.currentScreenshots.length}`;
-  }
-
-  parseJsonString(str) {
-    try {
-      // Handle Python dict-like strings
-      if (typeof str === 'string') {
-        // Replace single quotes with double quotes for JSON parsing
-        const jsonStr = str.replace(/'/g, '"');
-        return JSON.parse(jsonStr);
-      }
-      return str;
-    } catch (e) {
-      console.warn('Failed to parse:', str, e);
-      return null;
-    }
   }
 
   updatePagination() {

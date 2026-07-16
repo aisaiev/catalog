@@ -3,7 +3,6 @@ import os
 import yaml
 import requests
 import argparse
-import html
 import json
 import zipfile
 import hashlib
@@ -12,11 +11,8 @@ import shutil
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-import queue
-import sys
 import time
 from datetime import datetime
-from enum import Enum
 
 args = argparse.ArgumentParser(description="Builds the keira app and mod files")
 args.add_argument("--build", help="Build json files for mods and apps", action='store_true', default=False)
@@ -34,192 +30,84 @@ CLAMSCAN_AVAILABLE = shutil.which('clamscan') is not None
 CLAMAV_AVAILABLE = CLAMDSCAN_AVAILABLE or CLAMSCAN_AVAILABLE
 
 # ============================================================================
-# Thread-safe Progress Tracker with Live Display
+# Progress tracking and logging
 # ============================================================================
 
 class ProgressTracker:
-    """Thread-safe progress tracker with live terminal display"""
-    
-    # Status symbols and colors
-    PENDING = ('⏳', '\033[90m')      # Gray
-    RUNNING = ('🔄', '\033[94m')      # Blue  
-    SUCCESS = ('✅', '\033[92m')      # Green
-    WARNING = ('⚠️ ', '\033[93m')      # Yellow
-    ERROR = ('❌', '\033[91m')        # Red
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    CLEAR_LINE = '\033[2K'
-    
+    """Thread-safe per-item result tracker that prints a final summary."""
+
     def __init__(self, title: str, total: int, item_type: str = "item"):
         self.title = title
         self.total = total
         self.item_type = item_type
-        self.items = {}  # name -> (status, message)
         self.lock = threading.Lock()
-        self.completed = 0
+        self.successes = 0
         self.warnings_count = 0
         self.errors_count = 0
+        self.issues = []  # (icon, name, message)
         self.start_time = time.time()
-        self.messages = []  # Log messages to display after progress
-        
-    def add_item(self, name: str):
-        """Add item to track"""
-        with self.lock:
-            self.items[name] = (self.PENDING, "Waiting...")
-    
-    def update(self, name: str, status: tuple, message: str = ""):
-        """Update item status"""
-        with self.lock:
-            self.items[name] = (status, message)
-            if status == self.SUCCESS:
-                self.completed += 1
-            elif status == self.WARNING:
-                self.completed += 1
-                self.warnings_count += 1
-            elif status == self.ERROR:
-                self.completed += 1
-                self.errors_count += 1
-    
-    def log(self, message: str):
-        """Add a log message"""
-        with self.lock:
-            self.messages.append(message)
-    
-    def start(self, name: str):
-        """Mark item as running"""
-        self.update(name, self.RUNNING, "Processing...")
-    
+
     def success(self, name: str, message: str = "Done"):
-        """Mark item as successful"""
-        self.update(name, self.SUCCESS, message)
-    
+        with self.lock:
+            self.successes += 1
+
     def warn(self, name: str, message: str = "Completed with warnings"):
-        """Mark item as completed with warnings"""
-        self.update(name, self.WARNING, message)
-    
+        with self.lock:
+            self.warnings_count += 1
+            self.issues.append(('⚠️ ', name, message))
+
     def error(self, name: str, message: str = "Failed"):
-        """Mark item as failed"""
-        self.update(name, self.ERROR, message)
-    
-    def get_progress_bar(self, width: int = 30) -> str:
-        """Generate progress bar string"""
         with self.lock:
-            if self.total == 0:
-                return f"[{'=' * width}] 100%"
-            
-            progress = self.completed / self.total
-            filled = int(width * progress)
-            bar = '█' * filled + '░' * (width - filled)
-            percent = int(progress * 100)
-            return f"[{bar}] {percent}%"
-    
-    def display(self):
-        """Display current progress state"""
-        with self.lock:
-            elapsed = time.time() - self.start_time
-            
-            # Header
-            print(f"\n{self.BOLD}{'═' * 60}{self.RESET}")
-            print(f"{self.BOLD}📦 {self.title}{self.RESET}")
-            print(f"{'─' * 60}")
-            
-            # Progress bar
-            progress_bar = self.get_progress_bar(40)
-            print(f"\n{progress_bar} ({self.completed}/{self.total} {self.item_type}s)")
-            print(f"⏱️  Elapsed: {elapsed:.1f}s | ✅ {self.completed - self.warnings_count - self.errors_count} | ⚠️  {self.warnings_count} | ❌ {self.errors_count}")
-            
-            # Items status
-            print(f"\n{'─' * 60}")
-            
-            # Group by status
-            running = [(n, s, m) for n, (s, m) in self.items.items() if s == self.RUNNING]
-            pending = [(n, s, m) for n, (s, m) in self.items.items() if s == self.PENDING]
-            done = [(n, s, m) for n, (s, m) in self.items.items() if s in (self.SUCCESS, self.WARNING, self.ERROR)]
-            
-            # Show running items
-            if running:
-                for name, status, msg in running[:5]:
-                    icon, color = status
-                    print(f"  {color}{icon} {name}: {msg}{self.RESET}")
-            
-            # Show pending count
-            if pending:
-                print(f"  {self.PENDING[1]}⏳ {len(pending)} {self.item_type}(s) waiting...{self.RESET}")
-            
-            # Show recent completed
-            recent_done = done[-3:] if done else []
-            for name, status, msg in recent_done:
-                icon, color = status
-                print(f"  {color}{icon} {name}: {msg}{self.RESET}")
-            
-            print(f"{'═' * 60}\n")
-    
+            self.errors_count += 1
+            self.issues.append(('❌', name, message))
+
     def final_summary(self):
-        """Display final summary"""
         elapsed = time.time() - self.start_time
-        
-        print(f"\n{self.BOLD}{'═' * 60}{self.RESET}")
-        print(f"{self.BOLD}📊 {self.title} - COMPLETED{self.RESET}")
+        print(f"\n{'═' * 60}")
+        print(f"📊 {self.title} - COMPLETED")
         print(f"{'─' * 60}")
         print(f"  ⏱️  Total time: {elapsed:.2f}s")
         print(f"  📦 Total {self.item_type}s: {self.total}")
-        print(f"  ✅ Successful: {self.completed - self.warnings_count - self.errors_count}")
+        print(f"  ✅ Successful: {self.successes}")
         print(f"  ⚠️  With warnings: {self.warnings_count}")
         print(f"  ❌ Failed: {self.errors_count}")
-        
-        # Show all errors and warnings
-        errors_warnings = [(n, s, m) for n, (s, m) in self.items.items() if s in (self.WARNING, self.ERROR)]
-        if errors_warnings:
+        if self.issues:
             print(f"\n{'─' * 60}")
-            print(f"{self.BOLD}Issues:{self.RESET}")
-            for name, status, msg in errors_warnings:
-                icon, color = status
-                print(f"  {color}{icon} {name}: {msg}{self.RESET}")
-        
+            print("Issues:")
+            for icon, name, msg in self.issues:
+                print(f"  {icon} {name}: {msg}")
         print(f"{'═' * 60}\n")
 
 
 class SimpleLogger:
-    """Simple thread-safe logger for non-progress messages"""
-    
+    """Minimal thread-safe colored logger."""
+
     RESET = '\033[0m'
-    COLORS = {
-        'debug': '\033[90m',
-        'info': '\033[94m',
-        'success': '\033[92m',
-        'warning': '\033[93m',
-        'error': '\033[91m',
+    LEVELS = {
+        'debug': ('🔍', '\033[90m'),
+        'info': ('ℹ️ ', '\033[94m'),
+        'success': ('✅', '\033[92m'),
+        'warning': ('⚠️ ', '\033[93m'),
+        'error': ('❌', '\033[91m'),
     }
-    ICONS = {
-        'debug': '🔍',
-        'info': 'ℹ️ ',
-        'success': '✅',
-        'warning': '⚠️ ',
-        'error': '❌',
-    }
-    
+
     def __init__(self, verbose=False):
         self.verbose = verbose
         self.lock = threading.Lock()
-    
+
     def _log(self, level: str, message: str, context: str = None):
         if level == 'debug' and not self.verbose:
             return
+        icon, color = self.LEVELS[level]
+        prefix = f"[{context}] " if context else ""
         with self.lock:
-            color = self.COLORS.get(level, '')
-            icon = self.ICONS.get(level, '')
-            if context:
-                print(f"{color}{icon} [{context}] {message}{self.RESET}", flush=True)
-            else:
-                print(f"{color}{icon} {message}{self.RESET}", flush=True)
-    
+            print(f"{color}{icon} {prefix}{message}{self.RESET}", flush=True)
+
     def debug(self, msg, ctx=None): self._log('debug', msg, ctx)
     def info(self, msg, ctx=None): self._log('info', msg, ctx)
     def success(self, msg, ctx=None): self._log('success', msg, ctx)
     def warning(self, msg, ctx=None): self._log('warning', msg, ctx)
     def error(self, msg, ctx=None): self._log('error', msg, ctx)
-    def flush(self): pass
-    def shutdown(self): pass
 
 
 # Initialize global logger
@@ -249,22 +137,24 @@ MAX_ICON_SIZE = 512
 MIN_ICON_SIZE = 64  # For ESP32-S3 display
 JPEG_QUALITY = 85
 
+def _flatten_to_rgb(img):
+    """Convert an image with alpha/palette to RGB on a white background."""
+    if img.mode in ('RGBA', 'LA', 'P'):
+        if img.mode == 'P':
+            img = img.convert('RGBA')
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        background.paste(img, mask=img.split()[-1])
+        return background
+    if img.mode != 'RGB':
+        return img.convert('RGB')
+    return img
+
+
 def generate_min_icon(icon_path, output_path):
     """Generate 64x64 minimized icon for ESP32-S3 in RGB565 binary format"""
     try:
         with Image.open(icon_path) as img:
-            # Convert to RGB if needed
-            if img.mode in ('RGBA', 'LA', 'P'):
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                if img.mode == 'P':
-                    img = img.convert('RGBA')
-                if img.mode in ('RGBA', 'LA'):
-                    background.paste(img, mask=img.split()[-1])
-                else:
-                    background.paste(img)
-                img = background
-            elif img.mode != 'RGB':
-                img = img.convert('RGB')
+            img = _flatten_to_rgb(img)
             
             # Resize to 64x64
             img_resized = img.resize((MIN_ICON_SIZE, MIN_ICON_SIZE), Image.Resampling.LANCZOS)
@@ -297,46 +187,25 @@ def compress_image(image_path, max_width=MAX_IMAGE_WIDTH, max_height=MAX_IMAGE_H
     """Compress and resize image if it's too large"""
     try:
         with Image.open(image_path) as img:
-            # Get original size
             original_size = os.path.getsize(image_path)
             width, height = img.size
-            
-            # Check if image needs resizing
-            if width > max_width or height > max_height:
+            needs_resize = width > max_width or height > max_height
+
+            if needs_resize:
                 logger.debug(f"Resizing image from {width}x{height} to fit {max_width}x{max_height}")
-                # Calculate new dimensions maintaining aspect ratio
                 img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
-                
-                # Save compressed image
-                if image_path.lower().endswith('.png'):
-                    img.save(image_path, 'PNG', optimize=True)
-                else:
-                    # Convert to RGB if needed (for JPEG)
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        background = Image.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'P':
-                            img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
-                        img = background
-                    img.save(image_path, 'JPEG', quality=quality, optimize=True)
-                
-                new_size = os.path.getsize(image_path)
-                logger.debug(f"Compressed: {original_size} bytes -> {new_size} bytes ({100 - int(new_size/original_size*100)}% reduction)")
             elif original_size > 500 * 1024:  # If larger than 500KB, optimize anyway
                 logger.debug(f"Optimizing large image ({original_size} bytes)")
-                if image_path.lower().endswith('.png'):
-                    img.save(image_path, 'PNG', optimize=True)
-                else:
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        background = Image.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'P':
-                            img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
-                        img = background
-                    img.save(image_path, 'JPEG', quality=quality, optimize=True)
-                
-                new_size = os.path.getsize(image_path)
-                logger.debug(f"Compressed: {original_size} bytes -> {new_size} bytes ({100 - int(new_size/original_size*100)}% reduction)")
+            else:
+                return
+
+            if image_path.lower().endswith('.png'):
+                img.save(image_path, 'PNG', optimize=True)
+            else:
+                _flatten_to_rgb(img).save(image_path, 'JPEG', quality=quality, optimize=True)
+
+            new_size = os.path.getsize(image_path)
+            logger.debug(f"Compressed: {original_size} bytes -> {new_size} bytes ({100 - int(new_size/original_size*100)}% reduction)")
     except Exception as e:
         logger.warning(f"Could not compress image {image_path}: {e}")
 
@@ -370,6 +239,25 @@ def compute_md5(filepath):
         return None
 
 
+def _run_clam(scanner, filepath):
+    """Run a ClamAV scanner binary on a file and interpret its exit code."""
+    try:
+        result = subprocess.run(
+            [scanner, '--no-summary', '--infected', filepath],
+            capture_output=True, text=True, timeout=120
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "detail": "Scan timed out"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)[:200]}
+    if result.returncode == 0:
+        return {"status": "clean", "detail": "No threats detected"}
+    if result.returncode == 1:
+        return {"status": "infected", "detail": result.stdout.strip() or "Threat detected"}
+    return {"status": "error", "detail": result.stderr.strip()[:200],
+            "_returncode": result.returncode}
+
+
 def scan_file_clamav(filepath):
     """Scan a single file with ClamAV. Prefers clamdscan (daemon) for speed,
     falls back to clamscan if the daemon is unavailable.
@@ -380,52 +268,16 @@ def scan_file_clamav(filepath):
     # Prefer clamdscan (daemon client) — avoids reloading the signature DB
     # on every invocation (~30s saved per file).
     if CLAMDSCAN_AVAILABLE:
-        cmd = ['clamdscan', '--no-summary', '--infected', filepath]
-    else:
-        cmd = ['clamscan', '--no-summary', '--infected', filepath]
-
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120
-        )
-        if result.returncode == 0:
-            return {"status": "clean", "detail": "No threats detected"}
-        elif result.returncode == 1:
-            # Virus found
-            detail = result.stdout.strip() or "Threat detected"
-            return {"status": "infected", "detail": detail}
-        elif result.returncode == 2 and CLAMDSCAN_AVAILABLE:
-            # clamdscan returns 2 when the daemon is unreachable — fall back
+        result = _run_clam('clamdscan', filepath)
+        # clamdscan exits with 2 when the daemon is unreachable — fall back
+        if result.pop("_returncode", None) == 2 and CLAMSCAN_AVAILABLE:
             logger.warning("clamd not running, falling back to clamscan")
-            if CLAMSCAN_AVAILABLE:
-                return _scan_file_clamscan_fallback(filepath)
-            return {"status": "error", "detail": "clamd not running and clamscan not found"}
         else:
-            return {"status": "error", "detail": result.stderr.strip()[:200]}
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "detail": "Scan timed out"}
-    except Exception as e:
-        return {"status": "error", "detail": str(e)[:200]}
+            return result
 
-
-def _scan_file_clamscan_fallback(filepath):
-    """Fallback: scan with standalone clamscan (slow — loads DB each time)."""
-    try:
-        result = subprocess.run(
-            ['clamscan', '--no-summary', '--infected', filepath],
-            capture_output=True, text=True, timeout=120
-        )
-        if result.returncode == 0:
-            return {"status": "clean", "detail": "No threats detected"}
-        elif result.returncode == 1:
-            detail = result.stdout.strip() or "Threat detected"
-            return {"status": "infected", "detail": detail}
-        else:
-            return {"status": "error", "detail": result.stderr.strip()[:200]}
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "detail": "Scan timed out"}
-    except Exception as e:
-        return {"status": "error", "detail": str(e)[:200]}
+    result = _run_clam('clamscan', filepath)
+    result.pop("_returncode", None)
+    return result
 
 
 def generate_security_info(output_dir, manifest, item_type):
@@ -489,16 +341,22 @@ def generate_security_info(output_dir, manifest, item_type):
 
 def download_file(path, output_dir) -> str:
     url = path['origin'] if isinstance(path, dict) else path
-    response = requests.head(url)
-
     filename = url.split('/')[-1]
     output_path = os.path.join(output_dir, filename)
 
-    if response.status_code == 404:
-        raise FileNotFoundError(f"File not found: {url}")
-    if(args.build):
+    if args.build:
         logger.debug(f"Downloading {url}")
-        os.system(f"wget -q '{url}' -O '{output_path}'")
+        response = requests.get(url, stream=True, timeout=60)
+        if response.status_code == 404:
+            raise FileNotFoundError(f"File not found: {url}")
+        response.raise_for_status()
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(8192):
+                f.write(chunk)
+    else:
+        response = requests.head(url, timeout=10)
+        if response.status_code == 404:
+            raise FileNotFoundError(f"File not found: {url}")
 
     return filename
 
@@ -567,9 +425,8 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
                 source_path = os.path.join(path_to_modapp, screenshot)
                 dest_path = os.path.join(static_files_path, screenshot)
                 if os.path.exists(source_path):
-                    os.system(f"cp '{source_path}' '{dest_path}'")
-                    if os.path.exists(dest_path):
-                        compress_image(dest_path, MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT)
+                    shutil.copy(source_path, dest_path)
+                    compress_image(dest_path, MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT)
                 else:
                     logger.warning(f"Screenshot not found, skipping: {screenshot}")
         except Exception as e:
@@ -589,11 +446,10 @@ def gen_static_folder(manifest, type, output_dir) -> dict:
                 source_path = os.path.join(path_to_modapp, manifest['icon'])
                 dest_path = os.path.join(static_files_path, manifest['icon'])
                 if os.path.exists(source_path):
-                    os.system(f"cp '{source_path}' '{dest_path}'")
+                    shutil.copy(source_path, dest_path)
                     icon_dest_path = dest_path
                     # Compress the icon (smaller size for icons)
-                    if os.path.exists(dest_path):
-                        compress_image(dest_path, MAX_ICON_SIZE, MAX_ICON_SIZE)
+                    compress_image(dest_path, MAX_ICON_SIZE, MAX_ICON_SIZE)
                 else:
                     logger.warning(f"Icon not found, skipping: {manifest['icon']}")
                     icon_dest_path = None
@@ -754,31 +610,21 @@ def process_manifest(manifest, type) -> None:
 
 
 def gen_json_index_manifests(manifests, type) -> None:
-    jsons_per_page = 12
-    page = 1
-    jsons = []
-    pages = len(manifests) // jsons_per_page
-    if len(manifests) % jsons_per_page != 0:
-        pages += 1
+    per_page = 12
+    pages = (len(manifests) + per_page - 1) // per_page
     output_dir = os.path.join("./build", type+"s")
     os.makedirs(output_dir, exist_ok=True)
-    for i in range(0, pages):
-        with open(os.path.join("./build", type+"s", f"index_{i}.json"), 'w') as file:
-            file.write('{\n')
-            file.write(f'  "page": {i},\n')
-            file.write(f'  "total_pages": {pages},\n')
-            file.write(f'  "manifests": [\n')
-            page_manifests = []
-            for j in range(0, jsons_per_page):
-                if i*jsons_per_page+j >= len(manifests):
-                    break
-                page_manifests.append(f'    "{manifests[i*jsons_per_page+j]}"')
-            file.write(',\n'.join(page_manifests) + '\n')
-            file.write('  ]\n')
-            file.write('}\n')
-        
+    for i in range(pages):
+        data = {
+            "page": i,
+            "total_pages": pages,
+            "manifests": manifests[i * per_page:(i + 1) * per_page],
+        }
+        with open(os.path.join(output_dir, f"index_{i}.json"), 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=2, ensure_ascii=False)
 
-def check_folder_sturcture(folder) -> bool:
+
+def check_folder_structure(folder) -> bool:
     return os.path.isfile(os.path.join(folder, 'manifest.yml'))
 
 def infer_type_from_extension(filename: str) -> str:
@@ -841,7 +687,6 @@ def validate_app_files(src, manifest, type) -> bool:
     Only returns False for critical errors that should skip the app/mod.
     Uses parallel HTTP requests for faster validation."""
     path_to_app = os.path.join(type + "s", src)
-    is_valid = True
     validation_results = {'is_valid': True}
     results_lock = threading.Lock()
     
@@ -875,8 +720,8 @@ def validate_app_files(src, manifest, type) -> bool:
             if 'github.com' in repo_url:
                 http_tasks.append(('repo', repo_url, True))  # (type, url, is_critical)
     
-    if type == "app" and manifest.get('executionfile'):
-        exec_file = manifest['executionfile']
+    if type == "app":
+        exec_file = manifest.get('entryfile') or manifest.get('executionfile')
         if isinstance(exec_file, dict) and exec_file.get('location'):
             location = exec_file['location']
             if isinstance(location, dict) and location.get('origin'):
@@ -1141,129 +986,60 @@ def check_manifest(src, type) -> dict:
     return manifest
         
 
-def scan_apps_folder() -> list[str]:
-    folders_list = [d for d in os.listdir('./apps') if os.path.isdir(os.path.join('./apps', d))]
-    folders_list = sorted(folders_list)
-    return folders_list
+def scan_folder(folder) -> list[str]:
+    return sorted(d for d in os.listdir(folder) if os.path.isdir(os.path.join(folder, d)))
 
-def scan_mods_folder() -> list[str]:
-    folder_list = [d for d in os.listdir('./mods') if os.path.isdir(os.path.join('./mods', d))]
-    folder_list = sorted(folder_list)
-    return folder_list
+def process_folder(items, type):
+    """Process apps/mods in parallel with progress tracking"""
+    progress = ProgressTracker(f"Processing {type.capitalize()}s", len(items), type)
 
-def process_apps_folder(apps):
-    """Process apps in parallel with progress tracking"""
-    results = []
-    progress = ProgressTracker("Processing Apps", len(apps), "app")
-    
-    # Initialize all items
-    for app in apps:
-        progress.add_item(app)
-    
-    def process_single_app(app):
-        progress.start(app)
+    def process_single(item):
         try:
-            if check_folder_sturcture(os.path.join('./apps', app)):
-                manifest = check_manifest(app, 'app')
-                if manifest is not None:
-                    process_manifest(manifest, 'app')
-                    # Check if there were warnings for this app
-                    app_warnings = [w for w in build_warnings if w.get('name') == app]
-                    if app_warnings:
-                        progress.warn(app, f"Done with {len(app_warnings)} warning(s)")
-                    else:
-                        progress.success(app, "Built successfully")
-                    return app
-                else:
-                    progress.error(app, "Validation failed")
-                    return None
-            else:
-                add_warning(app, "missing_manifest", "manifest.yml file not found", "app")
-                progress.error(app, "manifest.yml not found")
+            if not check_folder_structure(os.path.join('.', type + 's', item)):
+                add_warning(item, "missing_manifest", "manifest.yml file not found", type)
+                progress.error(item, "manifest.yml not found")
                 return None
+            manifest = check_manifest(item, type)
+            if manifest is None:
+                progress.error(item, "Validation failed")
+                return None
+            process_manifest(manifest, type)
+            # Check if there were warnings for this item
+            item_warnings = [w for w in build_warnings if w.get('name') == item]
+            if item_warnings:
+                progress.warn(item, f"Done with {len(item_warnings)} warning(s)")
+            else:
+                progress.success(item, "Built successfully")
+            return item
         except Exception as e:
-            progress.error(app, f"Error: {str(e)[:30]}")
+            progress.error(item, f"Error: {str(e)[:30]}")
             return None
-    
+
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(process_single_app, app): app for app in apps}
-        for future in as_completed(futures):
-            app = futures[future]
-            try:
-                result = future.result()
-                if result:
-                    results.append(result)
-            except Exception as e:
-                progress.error(app, f"Exception: {str(e)[:30]}")
-    
+        results = [r for r in executor.map(process_single, items) if r]
+
     progress.final_summary()
     return sorted(results)
-        
-def process_mods_folder(mods):
-    """Process mods in parallel with progress tracking"""
-    results = []
-    progress = ProgressTracker("Processing Mods", len(mods), "mod")
-    
-    # Initialize all items
-    for mod in mods:
-        progress.add_item(mod)
-    
-    def process_single_mod(mod):
-        progress.start(mod)
-        try:
-            if check_folder_sturcture(os.path.join('./mods', mod)):
-                manifest = check_manifest(mod, 'mod')
-                if manifest is not None:
-                    process_manifest(manifest, 'mod')
-                    # Check if there were warnings for this mod
-                    mod_warnings = [w for w in build_warnings if w.get('name') == mod]
-                    if mod_warnings:
-                        progress.warn(mod, f"Done with {len(mod_warnings)} warning(s)")
-                    else:
-                        progress.success(mod, "Built successfully")
-                    return mod
-                else:
-                    progress.error(mod, "Validation failed")
-                    return None
-            else:
-                add_warning(mod, "missing_manifest", "manifest.yml file not found", "mod")
-                progress.error(mod, "manifest.yml not found")
-                return None
-        except Exception as e:
-            progress.error(mod, f"Error: {str(e)[:30]}")
-            return None
-    
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(process_single_mod, mod): mod for mod in mods}
-        for future in as_completed(futures):
-            mod = futures[future]
-            try:
-                result = future.result()
-                if result:
-                    results.append(result)
-            except Exception as e:
-                progress.error(mod, f"Exception: {str(e)[:30]}")
-    
-    progress.final_summary()
-    return sorted(results)
-        
+
 def gen_authors_index(apps, mods) -> None:
     """Generate authors.json grouping all manifests by author."""
     authors = {}
 
-    for app in apps:
-        manifest_path = os.path.join("./build", "apps", app, "index.json")
-        if os.path.exists(manifest_path):
+    for item_type, items in (("apps", apps), ("mods", mods)):
+        for item in items:
+            manifest_path = os.path.join("./build", item_type, item, "index.json")
+            if not os.path.exists(manifest_path):
+                continue
             try:
                 with open(manifest_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 author = data.get("author", "Unknown")
                 entry = {
-                    "name": data.get("name", app),
+                    "name": data.get("name", item),
                     "short_description": data.get("short_description", ""),
                     "icon": data.get("icon", ""),
-                    "path": app,
-                    "type": "apps"
+                    "path": item,
+                    "type": item_type
                 }
                 if data.get("languages"):
                     entry["languages"] = data["languages"]
@@ -1274,32 +1050,7 @@ def gen_authors_index(apps, mods) -> None:
                     }
                 authors.setdefault(author, []).append(entry)
             except Exception as e:
-                logger.warning(f"Failed to read manifest for authors index: {e}", app)
-
-    for mod in mods:
-        manifest_path = os.path.join("./build", "mods", mod, "index.json")
-        if os.path.exists(manifest_path):
-            try:
-                with open(manifest_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                author = data.get("author", "Unknown")
-                entry = {
-                    "name": data.get("name", mod),
-                    "short_description": data.get("short_description", ""),
-                    "icon": data.get("icon", ""),
-                    "path": mod,
-                    "type": "mods"
-                }
-                if data.get("languages"):
-                    entry["languages"] = data["languages"]
-                if data.get("localization"):
-                    entry["localization"] = {
-                        lang: {k: v for k, v in fields.items() if k in ("name", "short_description")}
-                        for lang, fields in data["localization"].items()
-                    }
-                authors.setdefault(author, []).append(entry)
-            except Exception as e:
-                logger.warning(f"Failed to read manifest for authors index: {e}", mod)
+                logger.warning(f"Failed to read manifest for authors index: {e}", item)
 
     # Sort authors alphabetically, sort items within each author
     sorted_authors = {}
@@ -1330,15 +1081,15 @@ def main():
         print(f"  ⚠️  clamdscan not found — using clamscan (slow). Install clamav-daemon for faster scans.")
     print(f"{'─' * 60}\n")
     
-    apps: list[str] = scan_apps_folder()
-    mods: list[str] = scan_mods_folder()
+    apps: list[str] = scan_folder('./apps')
+    mods: list[str] = scan_folder('./mods')
 
     print(f"📱 Found \033[1m{len(apps)}\033[0m apps")
     print(f"🔩 Found \033[1m{len(mods)}\033[0m mods\n")
 
     # Process in parallel and get successfully processed items
-    processed_apps = process_apps_folder(apps)
-    processed_mods = process_mods_folder(mods)
+    processed_apps = process_folder(apps, 'app')
+    processed_mods = process_folder(mods, 'mod')
 
     if args.build:
         print(f"\n\033[94mℹ️  Generating index files...\033[0m")
