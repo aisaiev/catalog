@@ -1,3 +1,25 @@
+// Static UI strings per language, applied to elements with [data-i18n]
+const UI_STRINGS = {
+  uk: {
+    'subtitle': 'Ігри, інструменти та модифікації для DIY-консолі Лілка',
+    'tab-apps': 'Додатки',
+    'tab-mods': 'Моди',
+    'tab-authors': 'Автори',
+    'tab-examples': 'Приклади',
+    'tab-docs': 'Документація',
+    'loading': 'Завантаження...',
+  },
+  en: {
+    'subtitle': 'Games, tools, and modifications for the Lilka DIY console',
+    'tab-apps': 'Apps',
+    'tab-mods': 'Mods',
+    'tab-authors': 'Authors',
+    'tab-examples': 'Examples',
+    'tab-docs': 'Documentation',
+    'loading': 'Loading...',
+  },
+};
+
 class LilkaRepository {
   constructor() {
     this.currentType = 'apps';
@@ -46,6 +68,17 @@ class LilkaRepository {
       btn.classList.toggle('active', btn.dataset.lang === this.currentLang);
     });
     document.documentElement.lang = this.currentLang;
+    this.applyUiStrings();
+  }
+
+  // Apply static UI translations to all [data-i18n] elements
+  applyUiStrings() {
+    const strings =
+        UI_STRINGS[this.currentLang] || UI_STRINGS[this.defaultLanguage];
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const text = strings[el.dataset.i18n];
+      if (text) el.textContent = text;
+    });
   }
 
   // Re-render currently visible content using the selected language
