@@ -1,5 +1,7 @@
 # Lilka Catalog
 
+[Українська версія / Ukrainian version](README.uk.md)
+
 A static website for browsing Lilka apps and mods.
 
 ## Features
@@ -74,6 +76,45 @@ build.py                # Main build script
 
 To contribute your app or mod to the Lilka repository:
 
+### `manifest.yml` Reference
+
+The build script (`build.py`) validates every manifest. If a **required** field
+is missing, the app/mod is **skipped** during the build. Missing **optional**
+fields only produce warnings in `build/warnings.json`.
+
+#### Required fields
+
+| Field | Applies to | Description |
+|-------|-----------|-------------|
+| `name` | apps & mods | Item name. Plain string or localized map (`uk`/`en`) |
+| `keira_version` | apps only | Minimum Keira firmware version the app requires |
+| `short_description` | apps & mods | Brief description. Plain string or localized map |
+| `author` | apps & mods | Author name |
+| `sources` | apps & mods | Source repository. Must contain `type` and `location.origin` |
+
+```yaml
+sources:
+  type: git
+  location:
+    origin: https://github.com/yourusername/yourrepo.git
+```
+
+#### Optional fields
+
+| Field | Applies to | Description |
+|-------|-----------|-------------|
+| `description` | apps & mods | Full description. Inline text, localized map, or `"@DESCRIPTION.md"` file reference |
+| `changelog` | apps & mods | Version history. Inline text, localized map, or `"@CHANGELOG.md"` file reference |
+| `icon` | apps & mods | Icon file (local path or URL). Compressed to max 512x512; a 64x64 RGB565 `icon_min` is generated for the device |
+| `screenshots` | apps & mods | List of images (local paths or URLs). Compressed to max 1920x1080 |
+| `entryfile` | apps only | The app's executable file, with `type` (`lua`, `archive`, or `binary`) and `location.origin`. `executionfile` is accepted as a legacy alias |
+| `files` | apps & mods | List of additional files to bundle, each with `location.origin` |
+| `modfiles` | mods only | List of mod files, each with a `name` and `location.origin` |
+
+**Note:** the declared `entryfile.type` must match the file extension
+(`.lua` → `lua`; `.zip`/`.tar`/`.tar.gz`/`.tgz` → `archive`; `.bin` → `binary`),
+otherwise the build emits a `type_mismatch` warning.
+
 ### For Apps
 
 1. Create a new directory in `apps/` named `yourapp.app`
@@ -85,7 +126,6 @@ short_description: Brief description
 description: "@DESCRIPTION.md"  # Or inline text
 changelog: "@CHANGELOG.md"      # Or inline text
 author: Your Name
-license: MIT
 icon: icon.png
 screenshots:
   - screenshot1.png
@@ -94,13 +134,13 @@ sources:
   type: git
   location:
     origin: https://github.com/yourusername/yourrepo.git
-executionfile:
-  type: lua  # or other type
+entryfile:
+  type: lua  # lua, archive or binary — must match the file extension
   location:
     origin: https://url-to-your-executable-file
 ```
 
-3. Add required files:
+3. Add the referenced files:
    - `DESCRIPTION.md` - Full description (if using @DESCRIPTION.md)
    - `CHANGELOG.md` - Version history (if using @CHANGELOG.md)
    - `icon.png` - App icon (will be compressed to 512x512)
@@ -120,7 +160,7 @@ executionfile:
 ### For Mods
 
 1. Create a new directory in `mods/` named `yourmod.case`
-2. Create a `manifest.yml` file similar to apps, but use `modfiles` instead of `executionfile`:
+2. Create a `manifest.yml` file similar to apps (no `keira_version` needed), but use `modfiles` instead of `entryfile`:
 ```yaml
 modfiles:
   - name: File 1

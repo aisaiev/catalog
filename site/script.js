@@ -52,7 +52,9 @@ class LilkaRepository {
   refreshLocalizedContent() {
     if (this.currentType === 'authors') {
       this.showAuthors();
-    } else if (this.currentType !== 'docs' && this.currentType !== 'examples') {
+    } else if (this.currentType === 'docs') {
+      this.showDocumentation();
+    } else if (this.currentType !== 'examples') {
       this.loadPage();
     }
     // If a modal is open, re-render it with the new language
@@ -849,7 +851,14 @@ class LilkaRepository {
     docsContainer.style.display = 'block';
 
     try {
-      const response = await fetch('README.md');
+      // Load the README matching the selected language, falling back to
+      // the default English README.md if the localized one is missing.
+      const readmeFile =
+          this.currentLang === 'uk' ? 'README.uk.md' : 'README.md';
+      let response = await fetch(readmeFile);
+      if (!response.ok && readmeFile !== 'README.md') {
+        response = await fetch('README.md');
+      }
       if (!response.ok) {
         throw new Error('Failed to load documentation');
       }

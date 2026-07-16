@@ -63,6 +63,7 @@ jobs:
           cp site/styles.css build/
           cp site/script.js build/
           cp README.md build/
+          cp README.uk.md build/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
